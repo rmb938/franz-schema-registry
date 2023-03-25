@@ -61,6 +61,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 		err := db.Transaction(func(tx *gorm.DB) error {
 
 			subject := &dbModels.Subject{}
+			// TODO: need to FORCE_INDEX but can't; see https://github.com/go-gorm/gorm/issues/6186
 			err := tx.Where("name = ?", subjectName).First(subject).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) == false {
@@ -82,6 +83,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			}
 
 			schema := &dbModels.Schema{}
+			// TODO: need to FORCE_INDEX but can't; see https://github.com/go-gorm/gorm/issues/6186
 			err = tx.Where("hash = ?", data.calculatedHash).First(schema).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) == false {
@@ -101,6 +103,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 
 				// make sure our id won't collide with an existing id
 				existingSchema := &dbModels.Schema{}
+				// TODO: need to FORCE_INDEX but can't; see https://github.com/go-gorm/gorm/issues/6186
 				err = tx.Where("schema_id = ?", calculatedId).First(existingSchema).Error
 				if err != nil {
 					if errors.Is(err, gorm.ErrRecordNotFound) == false {
@@ -128,6 +131,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			response.ID = schema.SchemaID
 
 			subjectVersion := &dbModels.SubjectVersion{}
+			// TODO: need to FORCE_INDEX but can't; see https://github.com/go-gorm/gorm/issues/6186
 			err = tx.Where("subject_id = ? AND schema_id = ?", subject.ID, schema.ID).First(subjectVersion).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) == false {
@@ -195,6 +199,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 
 		err := db.Transaction(func(tx *gorm.DB) error {
 			subject := &dbModels.Subject{}
+			// TODO: need to FORCE_INDEX but can't; see https://github.com/go-gorm/gorm/issues/6186
 			err := tx.Where("name = ?", subjectName).First(subject).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -209,6 +214,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			}
 
 			schema := &dbModels.Schema{}
+			// TODO: need to FORCE_INDEX but can't; see https://github.com/go-gorm/gorm/issues/6186
 			err = tx.Where("hash = ?", data.calculatedHash).First(schema).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -223,6 +229,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			}
 
 			subjectVersion := &dbModels.SubjectVersion{}
+			// TODO: need to FORCE_INDEX but can't; see https://github.com/go-gorm/gorm/issues/6186
 			err = tx.Where("subject_id = ? AND schema_id = ?", subject.ID, schema.ID).First(subjectVersion).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
