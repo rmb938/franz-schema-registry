@@ -61,14 +61,15 @@ Franz Schema Registry is not production ready and is not recommended to be deplo
 - [ ] JSON Schemas
 - [ ] Schema References
 - [ ] Schema Compatibility Checks
-- [ ] Promtheus Metrics
+- [ ] Prometheus Metrics
+- [ ] ACLs
 - [ ] Full `/schemas` API compatibility
   - [ ] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--schemas-ids-int-%20id
   - [ ] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--schemas-ids-int-%20id-schema
   - [ ] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--schemas-types-
   - [ ] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--schemas-ids-int-%20id-versions
 - [ ] Full `/subjects` API compatibility
-  - [ ] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--subjects
+  - [X] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--subjects
   - [ ] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--subjects-(string-%20subject)-versions
   - [ ] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#delete--subjects-(string-%20subject)
   - [ ] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--subjects-(string-%20subject)-versions-(versionId-%20version)

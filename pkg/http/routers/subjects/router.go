@@ -12,14 +12,39 @@ import (
 	"github.com/google/uuid"
 	dbModels "github.com/rmb938/franz-schema-registry/pkg/database/models"
 	"gorm.io/gorm"
+	"gorm.io/hints"
 )
+
+func forceIndexHint(index string) hints.Hints {
+	forceIndexHint := hints.CommentBefore("where", fmt.Sprintf("FORCE_INDEX = %s", index))
+	forceIndexHint.Prefix = "/*@ "
+	return forceIndexHint
+}
 
 func NewRouter(db *gorm.DB) *chi.Mux {
 	chiRouter := chi.NewRouter()
 
 	// https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--subjects
 	chiRouter.Get("/", func(writer http.ResponseWriter, request *http.Request) {
+		var subjects []dbModels.Subject
 
+		result := db.Find(&subjects)
+		if result.Error != nil {
+			render.Status(request, http.StatusInternalServerError)
+			render.JSON(writer, request, map[string]interface{}{
+				"error_code": 50001,
+				"message":    fmt.Sprintf("error listing subjects from database: %s", result.Error),
+			})
+			return
+		}
+
+		subjectList := make([]string, len(subjects))
+		for index, subject := range subjects {
+			subjectList[index] = subject.Name
+		}
+
+		render.Status(request, http.StatusOK)
+		render.JSON(writer, request, subjectList)
 	})
 
 	// https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--subjects-(string-%20subject)-versions
@@ -61,8 +86,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 		err := db.Transaction(func(tx *gorm.DB) error {
 
 			subject := &dbModels.Subject{}
-			// TODO: need to FORCE_INDEX but can't; see https://github.com/go-gorm/gorm/issues/6186
-			err := tx.Where("name = ?", subjectName).First(subject).Error
+			err := tx.Clauses(forceIndexHint("idx_subjects_name")).Where("name = ?", subjectName).First(subject).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) == false {
 					return fmt.Errorf("error finding subject: %s: %w", subjectName, err)
@@ -83,8 +107,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			}
 
 			schema := &dbModels.Schema{}
-			// TODO: need to FORCE_INDEX but can't; see https://github.com/go-gorm/gorm/issues/6186
-			err = tx.Where("hash = ?", data.calculatedHash).First(schema).Error
+			err = tx.Clauses(forceIndexHint("idx_schemas_hash")).Where("hash = ?", data.calculatedHash).First(schema).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) == false {
 					return fmt.Errorf("error finding schema for subject %s: %w", subjectName, err)
@@ -103,8 +126,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 
 				// make sure our id won't collide with an existing id
 				existingSchema := &dbModels.Schema{}
-				// TODO: need to FORCE_INDEX but can't; see https://github.com/go-gorm/gorm/issues/6186
-				err = tx.Where("schema_id = ?", calculatedId).First(existingSchema).Error
+				err = tx.Clauses(forceIndexHint("idx_schemas_schema_id")).Where("schema_id = ?", calculatedId).First(existingSchema).Error
 				if err != nil {
 					if errors.Is(err, gorm.ErrRecordNotFound) == false {
 						return fmt.Errorf("error finding schema for subject %s: %w", subjectName, err)
@@ -131,7 +153,6 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			response.ID = schema.SchemaID
 
 			subjectVersion := &dbModels.SubjectVersion{}
-			// TODO: need to FORCE_INDEX but can't; see https://github.com/go-gorm/gorm/issues/6186
 			err = tx.Where("subject_id = ? AND schema_id = ?", subject.ID, schema.ID).First(subjectVersion).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) == false {
@@ -144,7 +165,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			if subjectVersion == nil {
 				latestVersion := &dbModels.SubjectVersion{}
 				latestVersionNum := 0
-				err = tx.Order("version desc").Where("subject_id = ?", subject.ID).First(latestVersion).Error
+				err = tx.Clauses(forceIndexHint("idx_subject_versions_subject_id")).Order("version desc").Where("subject_id = ?", subject.ID).First(latestVersion).Error
 				if err != nil {
 					if errors.Is(err, gorm.ErrRecordNotFound) == false {
 						return fmt.Errorf("error finding latest version for subject %s: %w", subjectName, err)
@@ -199,8 +220,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 
 		err := db.Transaction(func(tx *gorm.DB) error {
 			subject := &dbModels.Subject{}
-			// TODO: need to FORCE_INDEX but can't; see https://github.com/go-gorm/gorm/issues/6186
-			err := tx.Where("name = ?", subjectName).First(subject).Error
+			err := tx.Clauses(forceIndexHint("idx_subjects_name")).Where("name = ?", subjectName).First(subject).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
 					errorCode = http.StatusNotFound
@@ -214,8 +234,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			}
 
 			schema := &dbModels.Schema{}
-			// TODO: need to FORCE_INDEX but can't; see https://github.com/go-gorm/gorm/issues/6186
-			err = tx.Where("hash = ?", data.calculatedHash).First(schema).Error
+			err = tx.Clauses(forceIndexHint("idx_schemas_hash")).Where("hash = ?", data.calculatedHash).First(schema).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
 					errorCode = http.StatusNotFound
@@ -229,7 +248,6 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			}
 
 			subjectVersion := &dbModels.SubjectVersion{}
-			// TODO: need to FORCE_INDEX but can't; see https://github.com/go-gorm/gorm/issues/6186
 			err = tx.Where("subject_id = ? AND schema_id = ?", subject.ID, schema.ID).First(subjectVersion).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
