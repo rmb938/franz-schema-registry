@@ -12,17 +12,6 @@ func migration20230325130Init() *gormigrate.Migration {
 	return &gormigrate.Migration{
 		ID: "20230325130_init",
 		Migrate: func(tx *gorm.DB) error {
-			type SubjectVersion struct {
-				gorm.Model
-				ID        uuid.UUID `gorm:"primaryKey"`
-				SubjectID uuid.UUID `gorm:"index:idx_subject_id_schema_id;index;uniqueIndex:idx_subject_id_version;not null"`
-				SchemaID  uuid.UUID `gorm:"index:idx_subject_id_schema_id;not null"`
-				Version   int       `gorm:"uniqueIndex:idx_subject_id_version;not null"`
-				CreatedAt time.Time `gorm:"not null"`
-				UpdatedAt time.Time `gorm:"not null"`
-				DeletedAt gorm.DeletedAt
-			}
-
 			type Schema struct {
 				gorm.Model
 				ID        uuid.UUID `gorm:"primaryKey"`
@@ -44,7 +33,23 @@ func migration20230325130Init() *gormigrate.Migration {
 				DeletedAt     gorm.DeletedAt
 			}
 
-			return tx.AutoMigrate(&Subject{}, &Schema{}, &SubjectVersion{})
+			type SubjectVersion struct {
+				gorm.Model
+				ID        uuid.UUID `gorm:"primaryKey"`
+				SubjectID uuid.UUID `gorm:"index:idx_subject_id_schema_id;index;uniqueIndex:idx_subject_id_version;not null"`
+				SchemaID  uuid.UUID `gorm:"index:idx_subject_id_schema_id;not null"`
+				Version   int       `gorm:"uniqueIndex:idx_subject_id_version;not null"`
+				CreatedAt time.Time `gorm:"not null"`
+				UpdatedAt time.Time `gorm:"not null"`
+				DeletedAt gorm.DeletedAt
+
+				// Used to set up foreign keys, not used in actual model
+				// Spanner does not support cascade, so we have to delete all versions manually when hard deleting
+				Subject Subject
+				Schema  Schema
+			}
+
+			return tx.Migrator().AutoMigrate(&Subject{}, &Schema{}, &SubjectVersion{})
 		},
 		Rollback: func(tx *gorm.DB) error {
 			if err := tx.Migrator().DropTable("subject_versions"); err != nil {
