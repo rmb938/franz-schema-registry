@@ -15,30 +15,31 @@ func migration20230325130Init() *gormigrate.Migration {
 		ID: "20230325130_init",
 		Migrate: func(tx *gorm.DB) error {
 			type SubjectVersion struct {
-				SubjectID uuid.UUID `gorm:"primaryKey;index;uniqueIndex:idx_subject_id_schema_id;uniqueIndex:idx_subject_id_version"`
-				SchemaID  uuid.UUID `gorm:"primaryKey;uniqueIndex:idx_subject_id_schema_id"`
-				Version   int       `gorm:"uniqueIndex:idx_subject_id_version"`
-				CreatedAt time.Time
+				SubjectID uuid.UUID `gorm:"primaryKey;index;uniqueIndex:idx_subject_id_version"`
+				SchemaID  uuid.UUID `gorm:"primaryKey"`
+				Version   int       `gorm:"uniqueIndex:idx_subject_id_version;not null"`
+				CreatedAt time.Time `gorm:"not null"`
 				DeletedAt gorm.DeletedAt
 			}
 
 			type Schema struct {
 				gorm.Model
 				ID        uuid.UUID `gorm:"primaryKey"`
-				SchemaID  int       `gorm:"uniqueIndex"`
-				Schema    string
-				Hash      string `gorm:"uniqueIndex"`
-				CreatedAt time.Time
+				SchemaID  int       `gorm:"uniqueIndex;not null"`
+				Schema    string    `gorm:"not null"`
+				Hash      string    `gorm:"uniqueIndex;not null"`
+				CreatedAt time.Time `gorm:"not null"`
+				UpdatedAt time.Time `gorm:"not null"`
 				DeletedAt gorm.DeletedAt
 			}
 
 			type Subject struct {
 				gorm.Model
 				ID            uuid.UUID `gorm:"primaryKey"`
-				Name          string    `gorm:"uniqueIndex"`
-				Compatibility string
-				CreatedAt     time.Time
-				UpdatedAt     time.Time
+				Name          string    `gorm:"uniqueIndex;not null"`
+				Compatibility string    `gorm:"not null"`
+				CreatedAt     time.Time `gorm:"not null"`
+				UpdatedAt     time.Time `gorm:"not null"`
 				DeletedAt     gorm.DeletedAt
 				Versions      []Schema `gorm:"many2many:subject_versions;"`
 			}

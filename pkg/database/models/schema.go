@@ -14,5 +14,6 @@ type Schema struct {
 	Schema    string
 	Hash      string
 	CreatedAt time.Time
+	UpdatedAt time.Time
 	DeletedAt gorm.DeletedAt
 }

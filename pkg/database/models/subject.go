@@ -27,7 +27,6 @@ type Subject struct {
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 	DeletedAt     gorm.DeletedAt
-	Versions      []Schema `gorm:"many2many:subject_versions;"`
 }
 
 type SubjectVersion struct {

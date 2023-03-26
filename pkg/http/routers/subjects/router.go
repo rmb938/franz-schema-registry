@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/render"
@@ -28,7 +29,16 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 	chiRouter.Get("/", func(writer http.ResponseWriter, request *http.Request) {
 		var subjects []dbModels.Subject
 
-		result := db.Find(&subjects)
+		// Whether to included soft deleted subjects
+		deletedRaw := request.URL.Query().Get("deleted")
+		deleted, _ := strconv.ParseBool(deletedRaw)
+
+		subjectsDB := db
+		if deleted {
+			subjectsDB = subjectsDB.Unscoped()
+		}
+
+		result := subjectsDB.Find(&subjects)
 		if result.Error != nil {
 			render.Status(request, http.StatusInternalServerError)
 			render.JSON(writer, request, map[string]interface{}{
@@ -49,7 +59,60 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 
 	// https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--subjects-(string-%20subject)-versions
 	chiRouter.Get("/{subject}/versions", func(writer http.ResponseWriter, request *http.Request) {
+		subjectName := chi.URLParam(request, "subject")
 
+		// Whether to included soft deleted versions
+		deletedRaw := request.URL.Query().Get("deleted")
+		deleted, _ := strconv.ParseBool(deletedRaw)
+
+		errorCode := http.StatusInternalServerError
+		var errorResponse map[string]interface{}
+
+		subjectVersions := make([]dbModels.SubjectVersion, 0)
+		err := db.Transaction(func(tx *gorm.DB) error {
+
+			subjectVersionsTX := tx
+			if deleted {
+				subjectVersionsTX = subjectVersionsTX.Unscoped()
+			}
+			err := subjectVersionsTX.Clauses(forceIndexHint("idx_subjects_name")).Joins("JOIN subjects ON subjects.id = subject_versions.subject_id").Where("subjects.name = ? AND subjects.deleted_at is NULL", subjectName).Find(&subjectVersions).Error
+			if err != nil {
+				return fmt.Errorf("error finding subject versions: %s: %w", subjectName, err)
+			}
+
+			return nil
+		})
+
+		if err != nil {
+			render.Status(request, errorCode)
+			if errorResponse == nil {
+				errorResponse = map[string]interface{}{
+					"error_code": 50001,
+					"message":    fmt.Sprintf("error listing subject versions: %s", err),
+				}
+			}
+
+			render.JSON(writer, request, errorResponse)
+			return
+		}
+
+		if len(subjectVersions) == 0 {
+			render.Status(request, http.StatusNotFound)
+			errorResponse = map[string]interface{}{
+				"error_code": 40401,
+				"message":    fmt.Sprintf("subject not found"),
+			}
+			render.JSON(writer, request, errorResponse)
+			return
+		}
+
+		subjectVersionIDs := make([]int, len(subjectVersions))
+		for index, subjectVersion := range subjectVersions {
+			subjectVersionIDs[index] = subjectVersion.Version
+		}
+
+		render.Status(request, http.StatusOK)
+		render.JSON(writer, request, subjectVersionIDs)
 	})
 
 	// https://docs.confluent.io/platform/current/schema-registry/develop/api.html#delete--subjects-(string-%20subject)
@@ -86,7 +149,8 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 		err := db.Transaction(func(tx *gorm.DB) error {
 
 			subject := &dbModels.Subject{}
-			err := tx.Clauses(forceIndexHint("idx_subjects_name")).Where("name = ?", subjectName).First(subject).Error
+			// unscoped so we can get soft deleted subjects
+			err := tx.Unscoped().Clauses(forceIndexHint("idx_subjects_name")).Where("name = ?", subjectName).First(subject).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) == false {
 					return fmt.Errorf("error finding subject: %s: %w", subjectName, err)
@@ -103,6 +167,14 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 				}
 				if err := tx.Create(subject).Error; err != nil {
 					return fmt.Errorf("error creating subject: %s: %w", subjectName, err)
+				}
+			}
+
+			// subject was soft deleted and now we want it back
+			if subject.DeletedAt.Valid {
+				err := tx.Model(subject).Update("deleted_at", nil).Error
+				if err != nil {
+					return fmt.Errorf("error unsoft deleting subject: %s: %w", subjectName, err)
 				}
 			}
 
@@ -165,7 +237,8 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			if subjectVersion == nil {
 				latestVersion := &dbModels.SubjectVersion{}
 				latestVersionNum := 0
-				err = tx.Clauses(forceIndexHint("idx_subject_versions_subject_id")).Order("version desc").Where("subject_id = ?", subject.ID).First(latestVersion).Error
+				// unscoped because we need to include soft deleted and skip that version if it's soft deleted
+				err = tx.Unscoped().Clauses(forceIndexHint("idx_subject_versions_subject_id")).Order("version desc").Where("subject_id = ?", subject.ID).First(latestVersion).Error
 				if err != nil {
 					if errors.Is(err, gorm.ErrRecordNotFound) == false {
 						return fmt.Errorf("error finding latest version for subject %s: %w", subjectName, err)

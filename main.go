@@ -10,7 +10,6 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-logr/zapr"
 	"github.com/rmb938/franz-schema-registry/pkg/database/migrations"
-	dbModels "github.com/rmb938/franz-schema-registry/pkg/database/models"
 	"github.com/rmb938/franz-schema-registry/pkg/http/routers/schemas"
 	"github.com/rmb938/franz-schema-registry/pkg/http/routers/subjects"
 	"go.uber.org/zap"
@@ -32,10 +31,6 @@ func main() {
 	), &gorm.Config{})
 	if err != nil {
 		log.Error(err, "error opening database connection")
-		os.Exit(1)
-	}
-	if err := db.SetupJoinTable(&dbModels.Subject{}, "Versions", &dbModels.SubjectVersion{}); err != nil {
-		log.Error(err, "error setting up join table for subject versions")
 		os.Exit(1)
 	}
 
