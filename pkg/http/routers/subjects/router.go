@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	dbModels "github.com/rmb938/franz-schema-registry/pkg/database/models"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"gorm.io/hints"
 )
 
@@ -106,7 +107,84 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 
 	// https://docs.confluent.io/platform/current/schema-registry/develop/api.html#delete--subjects-(string-%20subject)
 	chiRouter.Delete("/{subject}", func(writer http.ResponseWriter, request *http.Request) {
+		subjectName := chi.URLParam(request, "subject")
 
+		permanentRaw := request.URL.Query().Get("permanent")
+		permanent, _ := strconv.ParseBool(permanentRaw)
+
+		errorCode := http.StatusInternalServerError
+		var errorResponse map[string]interface{}
+
+		var subjectVersions []dbModels.SubjectVersion
+
+		err := db.Transaction(func(tx *gorm.DB) error {
+			subject := &dbModels.Subject{}
+			err := tx.Unscoped().Clauses(forceIndexHint("idx_subjects_name")).
+				Where("name = ?", subjectName).First(subject).Error
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					errorCode = http.StatusNotFound
+					errorResponse = map[string]interface{}{
+						"error_code": 40401,
+						"message":    "subject not found",
+					}
+					return fmt.Errorf("subject not found")
+				}
+				return fmt.Errorf("error finding subject: %s: %w", subjectName, err)
+			}
+
+			if permanent && subject.DeletedAt.Valid == false {
+				errorCode = http.StatusNotFound
+				errorResponse = map[string]interface{}{
+					"error_code": http.StatusConflict,
+					"message":    "must soft delete subject before permanently deleting",
+				}
+				return fmt.Errorf("must soft delete first")
+			}
+
+			deleteVersionsTx := tx
+			if permanent {
+				deleteVersionsTx = deleteVersionsTx.Unscoped()
+			}
+
+			err = tx.Clauses(clause.Returning{}).Where("subject_id = ?", subject.ID).Delete(&subjectVersions).Error
+			if err != nil {
+				return fmt.Errorf("error deleting subject versions: %w", err)
+			}
+
+			deleteSubjectTx := tx
+			if permanent {
+				deleteSubjectTx = deleteVersionsTx.Unscoped()
+			}
+
+			err = deleteSubjectTx.Delete(subject).Error
+			if err != nil {
+				return fmt.Errorf("error deleting subject: %w", err)
+			}
+
+			return nil
+		})
+
+		if err != nil {
+			render.Status(request, errorCode)
+			if errorResponse == nil {
+				errorResponse = map[string]interface{}{
+					"error_code": 50001,
+					"message":    fmt.Sprintf("error saving subject schema version: %s", err),
+				}
+			}
+
+			render.JSON(writer, request, errorResponse)
+			return
+		}
+
+		subjectVersionIDs := make([]int, len(subjectVersions))
+		for index, subjectVersion := range subjectVersions {
+			subjectVersionIDs[index] = subjectVersion.Version
+		}
+
+		render.Status(request, http.StatusOK)
+		render.JSON(writer, request, subjectVersionIDs)
 	})
 
 	// https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--subjects-(string-%20subject)-versions-(versionId-%20version)
@@ -162,7 +240,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 
 			// subject was soft deleted and now we want it back
 			if subject.DeletedAt.Valid {
-				err := tx.Model(subject).Update("deleted_at", nil).Error
+				err := tx.Unscoped().Model(subject).Update("deleted_at", nil).Error
 				if err != nil {
 					return fmt.Errorf("error unsoft deleting subject: %s: %w", subjectName, err)
 				}

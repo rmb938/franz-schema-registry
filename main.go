@@ -28,7 +28,9 @@ func main() {
 
 	db, err := gorm.Open(postgres.Open(
 		"host=localhost user=postgres password=postgres dbname=franz-schema-registry port=5432 sslmode=disable",
-	), &gorm.Config{})
+	), &gorm.Config{
+		DisableNestedTransaction: true,
+	})
 	if err != nil {
 		log.Error(err, "error opening database connection")
 		os.Exit(1)
