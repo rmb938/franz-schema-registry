@@ -13,9 +13,17 @@ type SubjectReference struct {
 	Version int    `json:"version"`
 }
 
+type SchemaType string
+
+const (
+	SchemaTypeAvro     SchemaType = "AVRO"
+	SchemaTypeJSON     SchemaType = "JSON"
+	SchemaTypeProtobuf SchemaType = "PROTOBUF"
+)
+
 type RequestPostSubjectVersion struct {
 	Schema     string           `json:"schema"`
-	SchemaType string           `json:"schemaType,omitempty"`
+	SchemaType SchemaType       `json:"schemaType"`
 	References SubjectReference `json:"references,omitempty"`
 
 	calculatedHash string
@@ -46,7 +54,7 @@ func (r *ResponsePostSubjectVersion) Render(writer http.ResponseWriter, request 
 
 type RequestPostSubject struct {
 	Schema     string           `json:"schema"`
-	SchemaType string           `json:"schemaType,omitempty"`
+	SchemaType SchemaType       `json:"schemaType"`
 	References SubjectReference `json:"references,omitempty"`
 
 	calculatedHash string
@@ -75,5 +83,17 @@ type ResponsePostSubject struct {
 }
 
 func (r *ResponsePostSubject) Render(writer http.ResponseWriter, request *http.Request) error {
+	return nil
+}
+
+type ResponseGetSubjectVersion struct {
+	Subject    string     `json:"subject"`
+	ID         int        `json:"id"`
+	Version    int        `json:"version"`
+	SchemaType SchemaType `json:"schemaType"`
+	Schema     string     `json:"schema"`
+}
+
+func (r *ResponseGetSubjectVersion) Render(writer http.ResponseWriter, request *http.Request) error {
 	return nil
 }

@@ -14,13 +14,14 @@ func migration20230325130Init() *gormigrate.Migration {
 		Migrate: func(tx *gorm.DB) error {
 			type Schema struct {
 				gorm.Model
-				ID        uuid.UUID `gorm:"primaryKey"`
-				SchemaID  int       `gorm:"uniqueIndex;not null"`
-				Schema    string    `gorm:"not null"`
-				Hash      string    `gorm:"uniqueIndex;not null"`
-				CreatedAt time.Time `gorm:"not null"`
-				UpdatedAt time.Time `gorm:"not null"`
-				DeletedAt gorm.DeletedAt
+				ID         uuid.UUID `gorm:"primaryKey"`
+				SchemaID   int       `gorm:"uniqueIndex;not null"`
+				Schema     string    `gorm:"not null"`
+				Hash       string    `gorm:"uniqueIndex;not null"`
+				SchemaType string    `gorm:"not null"`
+				CreatedAt  time.Time `gorm:"not null"`
+				UpdatedAt  time.Time `gorm:"not null"`
+				DeletedAt  gorm.DeletedAt
 			}
 
 			type Subject struct {

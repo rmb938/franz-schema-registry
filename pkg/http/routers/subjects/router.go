@@ -189,7 +189,90 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 
 	// https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--subjects-(string-%20subject)-versions-(versionId-%20version)
 	chiRouter.Get("/{subject}/versions/{version}", func(writer http.ResponseWriter, request *http.Request) {
+		subjectName := chi.URLParam(request, "subject")
+		version := chi.URLParam(request, "version")
 
+		response := &ResponseGetSubjectVersion{}
+
+		errorCode := http.StatusInternalServerError
+		var errorResponse map[string]interface{}
+
+		err := db.Transaction(func(tx *gorm.DB) error {
+			subject := &dbModels.Subject{}
+			err := tx.Clauses(forceIndexHint("idx_subjects_name")).
+				Where("name = ?", subjectName).First(subject).Error
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					errorCode = http.StatusNotFound
+					errorResponse = map[string]interface{}{
+						"error_code": 40401,
+						"message":    "subject not found",
+					}
+					return fmt.Errorf("subject not found")
+				}
+				return fmt.Errorf("error finding subject: %s: %w", subjectName, err)
+			}
+
+			getVersionTx := tx
+			if version == "-1" || version == "latest" {
+				getVersionTx = getVersionTx.Clauses(forceIndexHint("idx_subject_versions_subject_id")).Where("subject_id = ?", subject.ID).Order("version desc").Limit(1)
+			} else {
+				versionInt, err := strconv.ParseInt(version, 10, 32)
+				if err != nil {
+					errorCode = http.StatusUnprocessableEntity
+					errorResponse = map[string]interface{}{
+						"error_code": 42202,
+						"message":    "invalid version",
+					}
+					return fmt.Errorf("invalid version")
+				}
+				getVersionTx = getVersionTx.Clauses(forceIndexHint("idx_subject_id_version")).Where("subject_id = ? AND VERSION = ?", subject.ID, versionInt)
+			}
+
+			versionModel := &dbModels.SubjectVersion{}
+			err = getVersionTx.First(versionModel).Error
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					errorCode = http.StatusUnprocessableEntity
+					errorResponse = map[string]interface{}{
+						"error_code": 40402,
+						"message":    "version not found",
+					}
+					return fmt.Errorf("version not found")
+				}
+				return fmt.Errorf("error finding version %s for subject %s: %w", version, subjectName, err)
+			}
+
+			schema := &dbModels.Schema{}
+			err = tx.Where("id = ?", versionModel.SchemaID).First(schema).Error
+			if err != nil {
+				return fmt.Errorf("error finding schema for version %s for subject %s: %w", version, subjectName, err)
+			}
+
+			response.Subject = subjectName
+			response.ID = schema.SchemaID
+			response.Version = versionModel.Version
+			response.SchemaType = SchemaType(schema.SchemaType)
+			response.Schema = schema.Schema
+
+			return nil
+		})
+
+		if err != nil {
+			render.Status(request, errorCode)
+			if errorResponse == nil {
+				errorResponse = map[string]interface{}{
+					"error_code": 50001,
+					"message":    fmt.Sprintf("error getting subject schema version: %s", err),
+				}
+			}
+
+			render.JSON(writer, request, errorResponse)
+			return
+		}
+
+		render.Status(request, http.StatusOK)
+		render.Render(writer, request, response)
 	})
 
 	// https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--subjects-(string-%20subject)-versions-(versionId-%20version)-schema
@@ -212,6 +295,29 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			})
 			return
 		}
+
+		schemaType := dbModels.SchemaTypeAvro
+		if len(data.SchemaType) > 0 {
+			switch data.SchemaType {
+			case SchemaTypeAvro:
+				schemaType = dbModels.SchemaTypeAvro
+			// TODO: uncomment once these other types are supported
+			// case SchemaTypeJSON:
+			// 	schemaType = dbModels.SchemaTypeJSON
+			// case SchemaTypeProtobuf:
+			// 	schemaType = dbModels.SchemaTypeProtobuf
+			default:
+				render.Status(request, http.StatusBadRequest)
+				render.JSON(writer, request, map[string]interface{}{
+					"error_code": http.StatusBadRequest,
+					"message":    fmt.Sprintf("unknown schema type: %s", data.SchemaType),
+				})
+				return
+			}
+		}
+
+		errorCode := http.StatusInternalServerError
+		var errorResponse map[string]interface{}
 
 		err := db.Transaction(func(tx *gorm.DB) error {
 
@@ -283,10 +389,11 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 
 				// create it
 				schema = &dbModels.Schema{
-					ID:       uuid.New(),
-					SchemaID: calculatedId,
-					Schema:   data.Schema,
-					Hash:     data.calculatedHash,
+					ID:         uuid.New(),
+					SchemaID:   calculatedId,
+					Schema:     data.Schema,
+					Hash:       data.calculatedHash,
+					SchemaType: schemaType,
 				}
 				if err := tx.Create(schema).Error; err != nil {
 					return fmt.Errorf("error creating schema for subject: %s: %w", subjectName, err)
@@ -307,7 +414,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			// if subject version is nil create it
 			if subjectVersion == nil {
 				latestVersion := &dbModels.SubjectVersion{}
-				latestVersionNum := 0
+				latestVersionNum := 1
 				// unscoped because we need to include soft deleted and skip that version if it's soft deleted
 				err = tx.Unscoped().Clauses(forceIndexHint("idx_subject_versions_subject_id")).
 					Order("version desc").Where("subject_id = ?", subject.ID).First(latestVersion).Error
@@ -315,8 +422,29 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 					if errors.Is(err, gorm.ErrRecordNotFound) == false {
 						return fmt.Errorf("error finding latest version for subject %s: %w", subjectName, err)
 					}
+					latestVersion = nil
 				}
-				latestVersionNum = latestVersion.Version + 1
+
+				if latestVersion != nil {
+					latestVersionNum = latestVersion.Version + 1
+
+					latestSchema := &dbModels.Schema{}
+					err = tx.Where("id = ?", latestVersion.SchemaID).First(latestSchema).Error
+					if err != nil {
+						return fmt.Errorf("error finding schema for subject latest version %s: %w", subjectName, err)
+					}
+
+					// TODO: match the error message from confluent schema registry
+					// TODO: this takes into account deleted versions, does confluent do that?
+					if latestSchema.SchemaType != schema.SchemaType {
+						errorCode = http.StatusBadRequest
+						errorResponse = map[string]interface{}{
+							"error_code": http.StatusBadRequest,
+							"message":    "cannot add version of a different schema type",
+						}
+						return fmt.Errorf("cannot add version of a different schema type")
+					}
+				}
 
 				subjectVersion = &dbModels.SubjectVersion{
 					ID:        uuid.New(),
@@ -333,11 +461,15 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 		})
 
 		if err != nil {
-			render.Status(request, http.StatusInternalServerError)
-			render.JSON(writer, request, map[string]interface{}{
-				"error_code": 50001,
-				"message":    fmt.Sprintf("error saving subject schema version: %s", err),
-			})
+			render.Status(request, errorCode)
+			if errorResponse == nil {
+				errorResponse = map[string]interface{}{
+					"error_code": 50001,
+					"message":    fmt.Sprintf("error saving subject schema version: %s", err),
+				}
+			}
+
+			render.JSON(writer, request, errorResponse)
 			return
 		}
 
@@ -361,6 +493,26 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			return
 		}
 
+		schemaType := SchemaTypeAvro
+		if len(data.SchemaType) > 0 {
+			switch data.SchemaType {
+			case SchemaTypeAvro:
+				schemaType = SchemaTypeAvro
+			// TODO: uncomment once these other types are supported
+			// case SchemaTypeJSON:
+			// 	schemaType = SchemaTypeJSON
+			// case SchemaTypeProtobuf:
+			// 	schemaType = SchemaTypeProtobuf
+			default:
+				render.Status(request, http.StatusBadRequest)
+				render.JSON(writer, request, map[string]interface{}{
+					"error_code": http.StatusBadRequest,
+					"message":    fmt.Sprintf("unknown schema type: %s", data.SchemaType),
+				})
+				return
+			}
+		}
+
 		errorCode := http.StatusInternalServerError
 		var errorResponse map[string]interface{}
 
@@ -382,7 +534,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 
 			schema := &dbModels.Schema{}
 			err = tx.Clauses(forceIndexHint("idx_schemas_hash")).
-				Where("hash = ?", data.calculatedHash).First(schema).Error
+				Where("hash = ? AND schema_type", data.calculatedHash, schemaType).First(schema).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
 					errorCode = http.StatusNotFound
