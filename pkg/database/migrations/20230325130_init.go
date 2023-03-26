@@ -6,7 +6,6 @@ import (
 
 	"github.com/go-gormigrate/gormigrate/v2"
 	"github.com/google/uuid"
-	dbModels "github.com/rmb938/franz-schema-registry/pkg/database/models"
 	"gorm.io/gorm"
 )
 
@@ -44,7 +43,7 @@ func migration20230325130Init() *gormigrate.Migration {
 				Versions      []Schema `gorm:"many2many:subject_versions;"`
 			}
 
-			if err := tx.SetupJoinTable(&dbModels.Subject{}, "Versions", &dbModels.SubjectVersion{}); err != nil {
+			if err := tx.SetupJoinTable(&Subject{}, "Versions", &SubjectVersion{}); err != nil {
 				return fmt.Errorf("error setting up join table for subject versions in migration: %w", err)
 			}
 
