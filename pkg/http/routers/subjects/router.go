@@ -65,48 +65,33 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 		deletedRaw := request.URL.Query().Get("deleted")
 		deleted, _ := strconv.ParseBool(deletedRaw)
 
-		errorCode := http.StatusInternalServerError
-		var errorResponse map[string]interface{}
-
 		var subjectVersions []dbModels.SubjectVersion
-		err := db.Transaction(func(tx *gorm.DB) error {
 
-			subjectVersionsTX := tx
-			if deleted {
-				subjectVersionsTX = subjectVersionsTX.Unscoped()
-			}
-			err := subjectVersionsTX.Model(&dbModels.SubjectVersion{}).
-				Clauses(forceIndexHint("idx_subjects_name")).
-				Joins("JOIN subjects ON subjects.id = subject_versions.subject_id").
-				Where("subjects.name = ? AND subjects.deleted_at is NULL", subjectName).
-				Order("subject_versions.version asc").Find(&subjectVersions).Error
-			if err != nil {
-				return fmt.Errorf("error finding subject versions: %s: %w", subjectName, err)
-			}
-
-			return nil
-		})
+		subjectVersionsDB := db
+		if deleted {
+			subjectVersionsDB = subjectVersionsDB.Unscoped()
+		}
+		err := subjectVersionsDB.Model(&dbModels.SubjectVersion{}).
+			Clauses(forceIndexHint("idx_subjects_name")).
+			Joins("JOIN subjects ON subjects.id = subject_versions.subject_id").
+			Where("subjects.name = ? AND subjects.deleted_at is NULL", subjectName).
+			Order("subject_versions.version asc").Find(&subjectVersions).Error
 
 		if err != nil {
-			render.Status(request, errorCode)
-			if errorResponse == nil {
-				errorResponse = map[string]interface{}{
-					"error_code": 50001,
-					"message":    fmt.Sprintf("error listing subject versions: %s", err),
-				}
-			}
-
-			render.JSON(writer, request, errorResponse)
+			render.Status(request, http.StatusInternalServerError)
+			render.JSON(writer, request, map[string]interface{}{
+				"error_code": 50001,
+				"message":    fmt.Sprintf("error listing subject versions: %s", err),
+			})
 			return
 		}
 
 		if len(subjectVersions) == 0 {
 			render.Status(request, http.StatusNotFound)
-			errorResponse = map[string]interface{}{
+			render.JSON(writer, request, map[string]interface{}{
 				"error_code": 40401,
 				"message":    fmt.Sprintf("subject not found"),
-			}
-			render.JSON(writer, request, errorResponse)
+			})
 			return
 		}
 
