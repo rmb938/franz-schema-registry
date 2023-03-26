@@ -77,7 +77,7 @@ Franz Schema Registry is not production ready and is not recommended to be deplo
   - [X] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--subjects-(string-%20subject)-versions-(versionId-%20version)-schema
   - [X] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#post--subjects-(string-%20subject)-versions
   - [X] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#post--subjects-(string-%20subject)
-  - [ ] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#delete--subjects-(string-%20subject)-versions-(versionId-%20version)
+  - [X] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#delete--subjects-(string-%20subject)-versions-(versionId-%20version)
   - [ ] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--subjects-(string-%20subject)-versions-versionId-%20version-referencedby
 - [ ] Full `/mode` API compatibility
   - [ ] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--mode

@@ -88,6 +88,8 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 		}
 
 		if len(subjectVersions) == 0 {
+			// TODO: no versions, so we should check if the subject actually exists, if it does return a empty list
+
 			render.Status(request, http.StatusNotFound)
 			render.JSON(writer, request, map[string]interface{}{
 				"error_code": 40401,
@@ -321,7 +323,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			err = getVersionTx.First(versionModel).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
-					errorCode = http.StatusUnprocessableEntity
+					errorCode = http.StatusNotFound
 					errorResponse = map[string]interface{}{
 						"error_code": 40402,
 						"message":    "version not found",
@@ -668,7 +670,86 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 
 	// https://docs.confluent.io/platform/current/schema-registry/develop/api.html#delete--subjects-(string-%20subject)-versions-(versionId-%20version)
 	chiRouter.Delete("/{subject}/versions/{version}", func(writer http.ResponseWriter, request *http.Request) {
+		subjectName := chi.URLParam(request, "subject")
+		version := chi.URLParam(request, "version")
 
+		errorCode := http.StatusInternalServerError
+		var errorResponse map[string]interface{}
+
+		permanentRaw := request.URL.Query().Get("permanent")
+		permanent, _ := strconv.ParseBool(permanentRaw)
+
+		err := db.Transaction(func(tx *gorm.DB) error {
+			subject := &dbModels.Subject{}
+			err := tx.Clauses(forceIndexHint("idx_subjects_name")).
+				Where("name = ?", subjectName).First(subject).Error
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					errorCode = http.StatusNotFound
+					errorResponse = map[string]interface{}{
+						"error_code": 40401,
+						"message":    "subject not found",
+					}
+					return fmt.Errorf("subject not found")
+				}
+				return fmt.Errorf("error finding subject: %s: %w", subjectName, err)
+			}
+
+			getVersionTx := tx
+			if version == "-1" || version == "latest" {
+				getVersionTx = getVersionTx.Clauses(forceIndexHint("idx_subject_versions_subject_id")).Where("subject_id = ?", subject.ID).Order("version desc").Limit(1)
+			} else {
+				versionInt, err := strconv.ParseInt(version, 10, 32)
+				if err != nil {
+					errorCode = http.StatusUnprocessableEntity
+					errorResponse = map[string]interface{}{
+						"error_code": 42202,
+						"message":    "invalid version",
+					}
+					return fmt.Errorf("invalid version")
+				}
+				getVersionTx = getVersionTx.Clauses(forceIndexHint("idx_subject_id_version")).Where("subject_id = ? AND VERSION = ?", subject.ID, versionInt)
+			}
+
+			// only hard delete if a specific version is given, not latest
+			if permanent && version != "-1" && version != "latest" {
+				getVersionTx = getVersionTx.Unscoped()
+			}
+
+			versionModel := &dbModels.SubjectVersion{}
+			txResp := getVersionTx.Delete(versionModel)
+			err = txResp.Error
+			if err != nil {
+				return fmt.Errorf("error finding version %s for subject %s: %w", version, subjectName, err)
+			}
+
+			if txResp.RowsAffected == 0 {
+				errorCode = http.StatusNotFound
+				errorResponse = map[string]interface{}{
+					"error_code": 40402,
+					"message":    "version not found",
+				}
+				return fmt.Errorf("version not found")
+			}
+
+			return nil
+		})
+
+		if err != nil {
+			render.Status(request, errorCode)
+			if errorResponse == nil {
+				errorResponse = map[string]interface{}{
+					"error_code": 50001,
+					"message":    fmt.Sprintf("error getting subject schema version: %s", err),
+				}
+			}
+
+			render.JSON(writer, request, errorResponse)
+			return
+		}
+
+		render.Status(request, http.StatusOK)
+		writer.Write([]byte(version))
 	})
 
 	// https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--subjects-(string-%20subject)-versions-versionId-%20version-referencedby
