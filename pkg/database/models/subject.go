@@ -30,6 +30,8 @@ type Subject struct {
 }
 
 type SubjectVersion struct {
+	gorm.Model
+	ID        uuid.UUID
 	SubjectID uuid.UUID
 	SchemaID  uuid.UUID
 	Version   int

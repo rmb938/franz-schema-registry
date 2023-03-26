@@ -68,14 +68,18 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 		errorCode := http.StatusInternalServerError
 		var errorResponse map[string]interface{}
 
-		subjectVersions := make([]dbModels.SubjectVersion, 0)
+		var subjectVersions []dbModels.SubjectVersion
 		err := db.Transaction(func(tx *gorm.DB) error {
 
 			subjectVersionsTX := tx
 			if deleted {
 				subjectVersionsTX = subjectVersionsTX.Unscoped()
 			}
-			err := subjectVersionsTX.Clauses(forceIndexHint("idx_subjects_name")).Joins("JOIN subjects ON subjects.id = subject_versions.subject_id").Where("subjects.name = ? AND subjects.deleted_at is NULL", subjectName).Find(&subjectVersions).Error
+			err := subjectVersionsTX.Model(&dbModels.SubjectVersion{}).
+				Clauses(forceIndexHint("idx_subjects_name")).
+				Joins("JOIN subjects ON subjects.id = subject_versions.subject_id").
+				Where("subjects.name = ? AND subjects.deleted_at is NULL", subjectName).
+				Order("subject_versions.version asc").Find(&subjectVersions).Error
 			if err != nil {
 				return fmt.Errorf("error finding subject versions: %s: %w", subjectName, err)
 			}
@@ -150,7 +154,8 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 
 			subject := &dbModels.Subject{}
 			// unscoped so we can get soft deleted subjects
-			err := tx.Unscoped().Clauses(forceIndexHint("idx_subjects_name")).Where("name = ?", subjectName).First(subject).Error
+			err := tx.Unscoped().Clauses(forceIndexHint("idx_subjects_name")).
+				Where("name = ?", subjectName).First(subject).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) == false {
 					return fmt.Errorf("error finding subject: %s: %w", subjectName, err)
@@ -179,7 +184,8 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			}
 
 			schema := &dbModels.Schema{}
-			err = tx.Clauses(forceIndexHint("idx_schemas_hash")).Where("hash = ?", data.calculatedHash).First(schema).Error
+			err = tx.Clauses(forceIndexHint("idx_schemas_hash")).
+				Where("hash = ?", data.calculatedHash).First(schema).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) == false {
 					return fmt.Errorf("error finding schema for subject %s: %w", subjectName, err)
@@ -198,7 +204,8 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 
 				// make sure our id won't collide with an existing id
 				existingSchema := &dbModels.Schema{}
-				err = tx.Clauses(forceIndexHint("idx_schemas_schema_id")).Where("schema_id = ?", calculatedId).First(existingSchema).Error
+				err = tx.Clauses(forceIndexHint("idx_schemas_schema_id")).
+					Where("schema_id = ?", calculatedId).First(existingSchema).Error
 				if err != nil {
 					if errors.Is(err, gorm.ErrRecordNotFound) == false {
 						return fmt.Errorf("error finding schema for subject %s: %w", subjectName, err)
@@ -225,7 +232,8 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			response.ID = schema.SchemaID
 
 			subjectVersion := &dbModels.SubjectVersion{}
-			err = tx.Where("subject_id = ? AND schema_id = ?", subject.ID, schema.ID).First(subjectVersion).Error
+			err = tx.Clauses(forceIndexHint("idx_subject_id_schema_id")).
+				Where("subject_id = ? AND schema_id = ?", subject.ID, schema.ID).First(subjectVersion).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) == false {
 					return fmt.Errorf("error finding subject version for subject %s: %w", subjectName, err)
@@ -238,7 +246,8 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 				latestVersion := &dbModels.SubjectVersion{}
 				latestVersionNum := 0
 				// unscoped because we need to include soft deleted and skip that version if it's soft deleted
-				err = tx.Unscoped().Clauses(forceIndexHint("idx_subject_versions_subject_id")).Order("version desc").Where("subject_id = ?", subject.ID).First(latestVersion).Error
+				err = tx.Unscoped().Clauses(forceIndexHint("idx_subject_versions_subject_id")).
+					Order("version desc").Where("subject_id = ?", subject.ID).First(latestVersion).Error
 				if err != nil {
 					if errors.Is(err, gorm.ErrRecordNotFound) == false {
 						return fmt.Errorf("error finding latest version for subject %s: %w", subjectName, err)
@@ -247,6 +256,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 				latestVersionNum = latestVersion.Version + 1
 
 				subjectVersion = &dbModels.SubjectVersion{
+					ID:        uuid.New(),
 					SubjectID: subject.ID,
 					SchemaID:  schema.ID,
 					Version:   latestVersionNum,
@@ -293,7 +303,8 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 
 		err := db.Transaction(func(tx *gorm.DB) error {
 			subject := &dbModels.Subject{}
-			err := tx.Clauses(forceIndexHint("idx_subjects_name")).Where("name = ?", subjectName).First(subject).Error
+			err := tx.Clauses(forceIndexHint("idx_subjects_name")).
+				Where("name = ?", subjectName).First(subject).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
 					errorCode = http.StatusNotFound
@@ -307,7 +318,8 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			}
 
 			schema := &dbModels.Schema{}
-			err = tx.Clauses(forceIndexHint("idx_schemas_hash")).Where("hash = ?", data.calculatedHash).First(schema).Error
+			err = tx.Clauses(forceIndexHint("idx_schemas_hash")).
+				Where("hash = ?", data.calculatedHash).First(schema).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
 					errorCode = http.StatusNotFound
@@ -321,7 +333,8 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			}
 
 			subjectVersion := &dbModels.SubjectVersion{}
-			err = tx.Where("subject_id = ? AND schema_id = ?", subject.ID, schema.ID).First(subjectVersion).Error
+			err = tx.Clauses(forceIndexHint("idx_subject_id_schema_id")).
+				Where("subject_id = ? AND schema_id = ?", subject.ID, schema.ID).First(subjectVersion).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) {
 					errorCode = http.StatusNotFound

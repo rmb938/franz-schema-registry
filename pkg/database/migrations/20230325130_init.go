@@ -1,7 +1,6 @@
 package migrations
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/go-gormigrate/gormigrate/v2"
@@ -14,10 +13,13 @@ func migration20230325130Init() *gormigrate.Migration {
 		ID: "20230325130_init",
 		Migrate: func(tx *gorm.DB) error {
 			type SubjectVersion struct {
-				SubjectID uuid.UUID `gorm:"primaryKey;index;uniqueIndex:idx_subject_id_version"`
-				SchemaID  uuid.UUID `gorm:"primaryKey"`
+				gorm.Model
+				ID        uuid.UUID `gorm:"primaryKey"`
+				SubjectID uuid.UUID `gorm:"index:idx_subject_id_schema_id;index;uniqueIndex:idx_subject_id_version;not null"`
+				SchemaID  uuid.UUID `gorm:"index:idx_subject_id_schema_id;not null"`
 				Version   int       `gorm:"uniqueIndex:idx_subject_id_version;not null"`
 				CreatedAt time.Time `gorm:"not null"`
+				UpdatedAt time.Time `gorm:"not null"`
 				DeletedAt gorm.DeletedAt
 			}
 
@@ -40,11 +42,6 @@ func migration20230325130Init() *gormigrate.Migration {
 				CreatedAt     time.Time `gorm:"not null"`
 				UpdatedAt     time.Time `gorm:"not null"`
 				DeletedAt     gorm.DeletedAt
-				Versions      []Schema `gorm:"many2many:subject_versions;"`
-			}
-
-			if err := tx.SetupJoinTable(&Subject{}, "Versions", &SubjectVersion{}); err != nil {
-				return fmt.Errorf("error setting up join table for subject versions in migration: %w", err)
 			}
 
 			return tx.AutoMigrate(&Subject{}, &Schema{}, &SubjectVersion{})
