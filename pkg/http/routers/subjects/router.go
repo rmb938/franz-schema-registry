@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/render"
 	"github.com/google/uuid"
+	"github.com/hamba/avro/v2"
 	dbModels "github.com/rmb938/franz-schema-registry/pkg/database/models"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -256,6 +257,11 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			response.SchemaType = SchemaType(schema.SchemaType)
 			response.Schema = schema.Schema
 
+			if response.SchemaType == SchemaTypeAvro {
+				// set to empty string when avro for compatibility
+				response.SchemaType = ""
+			}
+
 			return nil
 		})
 
@@ -394,6 +400,27 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 				})
 				return
 			}
+		}
+
+		switch schemaType {
+		case dbModels.SchemaTypeAvro:
+			avroSchema, err := avro.Parse(data.Schema)
+			if err != nil {
+				render.Status(request, http.StatusBadRequest)
+				render.JSON(writer, request, map[string]interface{}{
+					"error_code": http.StatusBadRequest,
+					"message":    fmt.Sprintf("not a valid avro schema: %s", err),
+				})
+				return
+			}
+			fmt.Println(avroSchema.String())
+		default:
+			render.Status(request, http.StatusBadRequest)
+			render.JSON(writer, request, map[string]interface{}{
+				"error_code": http.StatusBadRequest,
+				"message":    fmt.Sprintf("unknown schema type: %s", schemaType),
+			})
+			return
 		}
 
 		errorCode := http.StatusInternalServerError

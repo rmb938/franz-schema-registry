@@ -90,7 +90,7 @@ type ResponseGetSubjectVersion struct {
 	Subject    string     `json:"subject"`
 	ID         int32      `json:"id"`
 	Version    int32      `json:"version"`
-	SchemaType SchemaType `json:"schemaType"`
+	SchemaType SchemaType `json:"schemaType,omitempty"`
 	Schema     string     `json:"schema"`
 }
 
