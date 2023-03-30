@@ -18,7 +18,7 @@ const (
 type Schema struct {
 	gorm.Model
 	ID         uuid.UUID
-	SchemaID   int
+	SchemaID   int32
 	Schema     string
 	Hash       string
 	SchemaType SchemaType

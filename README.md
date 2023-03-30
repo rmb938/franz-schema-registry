@@ -36,14 +36,6 @@ complicated mirroring and recovery architecture from Schema Registry.
 
 * Possibly Incompatibility with [Schema Validation on Confluent Server](https://docs.confluent.io/platform/current/schema-registry/schema-validation.html)
 * Requires the use of another technology; Google Spanner
-* Possible Schema ID Collisions
-  * Confluent Schema Registry uses a [monotonically increasing](https://docs.confluent.io/platform/current/schema-registry/index.html#schema-id-allocation) 32-bit int for schema IDs
-  * Franz Schema Registry uses hashing of the schema document to generate schemas IDs. 
-    * Hashing is required since Google Spanner doesn't support auto-increment and monotonically increasing IDs cause [hotspots](https://cloud.google.com/spanner/docs/schema-design)
-    * To maintain compatibility this hash is limited to 32-bits which could cause collisions. If a collision is detected the schema will be blocked from being created.
-      * FNV-1 32-bit is used to calculate the IDs which has a [rare chance to collide](https://softwareengineering.stackexchange.com/questions/49550/which-hashing-algorithm-is-best-for-uniqueness-and-speed).
-      * If we could use 64 or 128-bits the collision chance is practically 0% however Confluent Schema Registry client libraries expected 32-bit integers, so we cannot.
-    * We can get around this by using an [async sequence generator](https://cloud.google.com/solutions/sequence-generation-in-cloud-spanner) this is a bit slow but may be ok for Schema Registry since registering new schemas does not have to be high throughput
 
 ## Production Deployment
 

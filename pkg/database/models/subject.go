@@ -34,7 +34,7 @@ type SubjectVersion struct {
 	ID        uuid.UUID
 	SubjectID uuid.UUID
 	SchemaID  uuid.UUID
-	Version   int
+	Version   int32
 	CreatedAt time.Time
 	DeletedAt gorm.DeletedAt
 }

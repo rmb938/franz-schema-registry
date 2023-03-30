@@ -1,10 +1,9 @@
 package subjects
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
-	"hash/fnv"
+	"math"
 	"net/http"
 	"strconv"
 
@@ -98,7 +97,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			return
 		}
 
-		subjectVersionIDs := make([]int, len(subjectVersions))
+		subjectVersionIDs := make([]int32, len(subjectVersions))
 		for index, subjectVersion := range subjectVersions {
 			subjectVersionIDs[index] = subjectVersion.Version
 		}
@@ -180,7 +179,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			return
 		}
 
-		subjectVersionIDs := make([]int, len(subjectVersions))
+		subjectVersionIDs := make([]int32, len(subjectVersions))
 		for index, subjectVersion := range subjectVersions {
 			subjectVersionIDs[index] = subjectVersion.Version
 		}
@@ -445,33 +444,30 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 
 			// if schema is nil, create it
 			if schema == nil {
-				// calculate int32 id, java clients use int32, so we can't go higher
-				hash32a := fnv.New32a()
-				if _, err := hash32a.Write([]byte(data.Schema)); err != nil {
-					return fmt.Errorf("error calculating id of schema: %w", err)
-				}
-				calculatedId := int(binary.BigEndian.Uint32(hash32a.Sum(nil)))
-
-				// make sure our id won't collide with an existing id
-				existingSchema := &dbModels.Schema{}
-				err = tx.Clauses(forceIndexHint("idx_schemas_schema_id")).
-					Where("schema_id = ?", calculatedId).First(existingSchema).Error
+				// get the next sequence, use the normal db as we don't want a nested transaction
+				nextId, err := dbModels.NextSequenceID(db, dbModels.SequenceNameSchemaIDs)
 				if err != nil {
-					if errors.Is(err, gorm.ErrRecordNotFound) == false {
-						return fmt.Errorf("error finding schema for subject %s: %w", subjectName, err)
+					errorCode = http.StatusInternalServerError
+					errorResponse = map[string]interface{}{
+						"error_code": http.StatusInternalServerError,
+						"message":    fmt.Sprintf("error generating next schema id: %s", err),
 					}
-					existingSchema = nil
+					return fmt.Errorf("error generating next schema id: %w", err)
 				}
 
-				// id collision, all we can do is error
-				if existingSchema != nil {
-					return fmt.Errorf("error while trying to maintain compatibility with Confluent Schema Registry, calculated schema id %d already exists with a different hash", existingSchema.SchemaID)
+				if nextId > math.MaxInt32 {
+					errorCode = http.StatusInternalServerError
+					errorResponse = map[string]interface{}{
+						"error_code": http.StatusInternalServerError,
+						"message":    "too many schemas registered next schema id is greater than int32",
+					}
+					return fmt.Errorf("too many schemas registered next schema id is greater than int32")
 				}
 
 				// create it
 				schema = &dbModels.Schema{
 					ID:         uuid.New(),
-					SchemaID:   calculatedId,
+					SchemaID:   int32(nextId),
 					Schema:     data.Schema,
 					Hash:       data.calculatedHash,
 					SchemaType: schemaType,
@@ -495,7 +491,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			// if subject version is nil create it
 			if subjectVersion == nil {
 				latestVersion := &dbModels.SubjectVersion{}
-				latestVersionNum := 1
+				latestVersionNum := int32(1)
 				// unscoped because we need to include soft deleted and skip that version if it's soft deleted
 				err = tx.Unscoped().Clauses(forceIndexHint("idx_subject_versions_subject_id")).
 					Order("version desc").Where("subject_id = ?", subject.ID).First(latestVersion).Error

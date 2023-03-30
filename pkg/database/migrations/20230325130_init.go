@@ -12,10 +12,15 @@ func migration20230325130Init() *gormigrate.Migration {
 	return &gormigrate.Migration{
 		ID: "20230325130_init",
 		Migrate: func(tx *gorm.DB) error {
+			type Sequence struct {
+				Name      string `gorm:"primaryKey"`
+				NextValue int64
+			}
+
 			type Schema struct {
 				gorm.Model
 				ID         uuid.UUID `gorm:"primaryKey"`
-				SchemaID   int       `gorm:"uniqueIndex;not null"`
+				SchemaID   int32     `gorm:"uniqueIndex;not null"`
 				Schema     string    `gorm:"not null"`
 				Hash       string    `gorm:"uniqueIndex;not null"`
 				SchemaType string    `gorm:"not null"`
@@ -39,7 +44,7 @@ func migration20230325130Init() *gormigrate.Migration {
 				ID        uuid.UUID `gorm:"primaryKey"`
 				SubjectID uuid.UUID `gorm:"index:idx_subject_id_schema_id;index;uniqueIndex:idx_subject_id_version;not null"`
 				SchemaID  uuid.UUID `gorm:"index:idx_subject_id_schema_id;not null"`
-				Version   int       `gorm:"uniqueIndex:idx_subject_id_version;not null"`
+				Version   int32     `gorm:"uniqueIndex:idx_subject_id_version;not null"`
 				CreatedAt time.Time `gorm:"not null"`
 				UpdatedAt time.Time `gorm:"not null"`
 				DeletedAt gorm.DeletedAt
@@ -50,9 +55,12 @@ func migration20230325130Init() *gormigrate.Migration {
 				Schema  Schema
 			}
 
-			return tx.Migrator().AutoMigrate(&Subject{}, &Schema{}, &SubjectVersion{})
+			return tx.Migrator().AutoMigrate(&Sequence{}, &Subject{}, &Schema{}, &SubjectVersion{})
 		},
 		Rollback: func(tx *gorm.DB) error {
+			if err := tx.Migrator().DropTable("sequences"); err != nil {
+				return err
+			}
 			if err := tx.Migrator().DropTable("subject_versions"); err != nil {
 				return err
 			}

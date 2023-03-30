@@ -45,7 +45,7 @@ func (r *RequestPostSubjectVersion) Bind(request *http.Request) error {
 }
 
 type ResponsePostSubjectVersion struct {
-	ID int `json:"id"`
+	ID int32 `json:"id"`
 }
 
 func (r *ResponsePostSubjectVersion) Render(writer http.ResponseWriter, request *http.Request) error {
@@ -77,8 +77,8 @@ func (r *RequestPostSubject) Bind(request *http.Request) error {
 
 type ResponsePostSubject struct {
 	Subject string `json:"subject"`
-	ID      int    `json:"id"`
-	Version int    `json:"version"`
+	ID      int32  `json:"id"`
+	Version int32  `json:"version"`
 	Schema  string `json:"schema"`
 }
 
@@ -88,8 +88,8 @@ func (r *ResponsePostSubject) Render(writer http.ResponseWriter, request *http.R
 
 type ResponseGetSubjectVersion struct {
 	Subject    string     `json:"subject"`
-	ID         int        `json:"id"`
-	Version    int        `json:"version"`
+	ID         int32      `json:"id"`
+	Version    int32      `json:"version"`
 	SchemaType SchemaType `json:"schemaType"`
 	Schema     string     `json:"schema"`
 }
