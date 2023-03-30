@@ -404,7 +404,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 
 		switch schemaType {
 		case dbModels.SchemaTypeAvro:
-			avroSchema, err := avro.Parse(data.Schema)
+			_, err := avro.Parse(data.Schema)
 			if err != nil {
 				render.Status(request, http.StatusBadRequest)
 				render.JSON(writer, request, map[string]interface{}{
@@ -413,7 +413,6 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 				})
 				return
 			}
-			fmt.Println(avroSchema.String())
 		default:
 			render.Status(request, http.StatusBadRequest)
 			render.JSON(writer, request, map[string]interface{}{
