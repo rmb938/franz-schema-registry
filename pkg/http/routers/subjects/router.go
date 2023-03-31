@@ -6,12 +6,13 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/render"
 	"github.com/google/uuid"
-	"github.com/hamba/avro/v2"
 	dbModels "github.com/rmb938/franz-schema-registry/pkg/database/models"
+	"github.com/rmb938/franz-schema-registry/pkg/schemas"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 	"gorm.io/hints"
@@ -254,10 +255,10 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			response.Subject = subjectName
 			response.ID = schema.SchemaID
 			response.Version = versionModel.Version
-			response.SchemaType = SchemaType(schema.SchemaType)
+			response.SchemaType = schemas.SchemaType(schema.SchemaType)
 			response.Schema = schema.Schema
 
-			if response.SchemaType == SchemaTypeAvro {
+			if response.SchemaType == schemas.SchemaTypeAvro {
 				// set to empty string when avro for compatibility
 				response.SchemaType = ""
 			}
@@ -382,16 +383,18 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			return
 		}
 
-		schemaType := dbModels.SchemaTypeAvro
+		schemaType := schemas.SchemaTypeAvro
+		dbSchemaType := dbModels.SchemaTypeAvro
 		if len(data.SchemaType) > 0 {
+			schemaType = data.SchemaType
 			switch data.SchemaType {
-			case SchemaTypeAvro:
-				schemaType = dbModels.SchemaTypeAvro
+			case schemas.SchemaTypeAvro:
+				dbSchemaType = dbModels.SchemaTypeAvro
 			// TODO: uncomment once these other types are supported
 			// case SchemaTypeJSON:
-			// 	schemaType = dbModels.SchemaTypeJSON
+			// 	dbSchemaType = dbModels.SchemaTypeJSON
 			// case SchemaTypeProtobuf:
-			// 	schemaType = dbModels.SchemaTypeProtobuf
+			// 	dbSchemaType = dbModels.SchemaTypeProtobuf
 			default:
 				render.Status(request, http.StatusBadRequest)
 				render.JSON(writer, request, map[string]interface{}{
@@ -402,22 +405,12 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			}
 		}
 
-		switch schemaType {
-		case dbModels.SchemaTypeAvro:
-			_, err := avro.Parse(data.Schema)
-			if err != nil {
-				render.Status(request, http.StatusBadRequest)
-				render.JSON(writer, request, map[string]interface{}{
-					"error_code": http.StatusBadRequest,
-					"message":    fmt.Sprintf("not a valid avro schema: %s", err),
-				})
-				return
-			}
-		default:
+		parsedSchema, err := schemas.ParseSchema(data.Schema, schemaType)
+		if err != nil {
 			render.Status(request, http.StatusBadRequest)
 			render.JSON(writer, request, map[string]interface{}{
 				"error_code": http.StatusBadRequest,
-				"message":    fmt.Sprintf("unknown schema type: %s", schemaType),
+				"message":    fmt.Sprintf("error parsing schema: %s", err),
 			})
 			return
 		}
@@ -425,7 +418,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 		errorCode := http.StatusInternalServerError
 		var errorResponse map[string]interface{}
 
-		err := db.Transaction(func(tx *gorm.DB) error {
+		err = db.Transaction(func(tx *gorm.DB) error {
 
 			subject := &dbModels.Subject{}
 			// unscoped so we can get soft deleted subjects
@@ -496,7 +489,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 					SchemaID:   int32(nextId),
 					Schema:     data.Schema,
 					Hash:       data.calculatedHash,
-					SchemaType: schemaType,
+					SchemaType: dbSchemaType,
 				}
 				if err := tx.Create(schema).Error; err != nil {
 					return fmt.Errorf("error creating schema for subject: %s: %w", subjectName, err)
@@ -516,6 +509,134 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 
 			// if subject version is nil create it
 			if subjectVersion == nil {
+				// checking compatibility
+				if subject.Compatibility != dbModels.SubjectCompatibilityNone {
+
+					existingSchemas := make([]dbModels.Schema, 0)
+					query := tx.Model(&dbModels.Schema{}).Clauses(forceIndexHint("idx_subject_versions_subject_id")).
+						Joins("JOIN subject_versions ON subject_versions.schema_id = schemas.id").
+						Order("version desc").
+						Where("subject_id = ?", subject.ID)
+
+					// check if we are transitive
+					if !strings.HasSuffix(string(subject.Compatibility), "_TRANSITIVE") {
+						// not transitive so we only need the first one
+						query = query.Limit(1)
+					} else {
+						// we are transitive, this is most likely a very expensive operation, so it's probably not a good idea to do
+						// this query could return tons of rows and require tons of comparisons
+					}
+
+					err := query.Find(&existingSchemas).Error
+					if err != nil {
+						return fmt.Errorf("error finding existing schemas for compatibility checking: %w", err)
+					}
+
+					var existingParsedSchemas []schemas.ParsedSchema
+					for _, existingSchemaModel := range existingSchemas {
+						existingParsedSchema, err := schemas.ParseSchema(existingSchemaModel.Schema, schemaType)
+						if err != nil {
+							errorCode = http.StatusInternalServerError
+							errorResponse = map[string]interface{}{
+								"error_code": http.StatusInternalServerError,
+								"message":    fmt.Sprintf("error parsing existing: %s", err),
+							}
+							return fmt.Errorf("error parsing existing: %w", err)
+						}
+
+						existingParsedSchemas = append(existingParsedSchemas, existingParsedSchema)
+					}
+
+					compatible := true
+					switch subject.Compatibility {
+					case dbModels.SubjectCompatibilityBackward:
+						fallthrough
+					case dbModels.SubjectCompatibilityBackwardTransitive:
+						for _, existingParsedSchema := range existingParsedSchemas {
+							isBackwardsCompatible, err := parsedSchema.IsBackwardsCompatible(existingParsedSchema)
+							if err != nil {
+								errorCode = http.StatusInternalServerError
+								errorResponse = map[string]interface{}{
+									"error_code": http.StatusInternalServerError,
+									"message":    fmt.Sprintf("error checking compatibility: %s", err),
+								}
+								return fmt.Errorf("error checking compatibility: %w", err)
+							}
+
+							if isBackwardsCompatible == false {
+								compatible = false
+								break
+							}
+						}
+						break
+					case dbModels.SubjectCompatibilityForward:
+						fallthrough
+					case dbModels.SubjectCompatibilityForwardTransitive:
+						for _, existingParsedSchema := range existingParsedSchemas {
+							isBackwardsCompatible, err := existingParsedSchema.IsBackwardsCompatible(parsedSchema)
+							if err != nil {
+								errorCode = http.StatusInternalServerError
+								errorResponse = map[string]interface{}{
+									"error_code": http.StatusInternalServerError,
+									"message":    fmt.Sprintf("error checking compatibility: %s", err),
+								}
+								return fmt.Errorf("error checking compatibility: %w", err)
+							}
+
+							if isBackwardsCompatible == false {
+								compatible = false
+								break
+							}
+						}
+						break
+					case dbModels.SubjectCompatibilityFull:
+						fallthrough
+					case dbModels.SubjectCompatibilityFullTransitive:
+						for _, existingParsedSchema := range existingParsedSchemas {
+							isBackwardsCompatible, err := parsedSchema.IsBackwardsCompatible(existingParsedSchema)
+							if err != nil {
+								errorCode = http.StatusInternalServerError
+								errorResponse = map[string]interface{}{
+									"error_code": http.StatusInternalServerError,
+									"message":    fmt.Sprintf("error checking compatibility: %s", err),
+								}
+								return fmt.Errorf("error checking compatibility: %w", err)
+							}
+
+							if isBackwardsCompatible == false {
+								compatible = false
+								break
+							}
+
+							isBackwardsCompatible, err = existingParsedSchema.IsBackwardsCompatible(parsedSchema)
+							if err != nil {
+								errorCode = http.StatusInternalServerError
+								errorResponse = map[string]interface{}{
+									"error_code": http.StatusInternalServerError,
+									"message":    fmt.Sprintf("error checking compatibility: %s", err),
+								}
+								return fmt.Errorf("error checking compatibility: %w", err)
+							}
+
+							if isBackwardsCompatible == false {
+								compatible = false
+								break
+							}
+						}
+						break
+					}
+
+					if compatible == false {
+						errorCode = http.StatusConflict
+						errorResponse = map[string]interface{}{
+							"error_code": http.StatusConflict,
+							"message":    fmt.Sprintf("schema is incompatible with an earlier schema"),
+						}
+						return fmt.Errorf("schema is incompatible with an earlier schema")
+					}
+
+				}
+
 				latestVersion := &dbModels.SubjectVersion{}
 				latestVersionNum := int32(1)
 				// unscoped because we need to include soft deleted and skip that version if it's soft deleted
@@ -596,11 +717,11 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			return
 		}
 
-		schemaType := SchemaTypeAvro
+		schemaType := schemas.SchemaTypeAvro
 		if len(data.SchemaType) > 0 {
 			switch data.SchemaType {
-			case SchemaTypeAvro:
-				schemaType = SchemaTypeAvro
+			case schemas.SchemaTypeAvro:
+				schemaType = schemas.SchemaTypeAvro
 			// TODO: uncomment once these other types are supported
 			// case SchemaTypeJSON:
 			// 	schemaType = SchemaTypeJSON

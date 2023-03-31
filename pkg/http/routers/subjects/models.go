@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"hash/fnv"
 	"net/http"
+
+	"github.com/rmb938/franz-schema-registry/pkg/schemas"
 )
 
 type SubjectReference struct {
@@ -13,18 +15,10 @@ type SubjectReference struct {
 	Version int    `json:"version"`
 }
 
-type SchemaType string
-
-const (
-	SchemaTypeAvro     SchemaType = "AVRO"
-	SchemaTypeJSON     SchemaType = "JSON"
-	SchemaTypeProtobuf SchemaType = "PROTOBUF"
-)
-
 type RequestPostSubjectVersion struct {
-	Schema     string           `json:"schema"`
-	SchemaType SchemaType       `json:"schemaType"`
-	References SubjectReference `json:"references,omitempty"`
+	Schema     string             `json:"schema"`
+	SchemaType schemas.SchemaType `json:"schemaType"`
+	References SubjectReference   `json:"references,omitempty"`
 
 	calculatedHash string
 }
@@ -53,9 +47,9 @@ func (r *ResponsePostSubjectVersion) Render(writer http.ResponseWriter, request 
 }
 
 type RequestPostSubject struct {
-	Schema     string           `json:"schema"`
-	SchemaType SchemaType       `json:"schemaType"`
-	References SubjectReference `json:"references,omitempty"`
+	Schema     string             `json:"schema"`
+	SchemaType schemas.SchemaType `json:"schemaType"`
+	References SubjectReference   `json:"references,omitempty"`
 
 	calculatedHash string
 }
@@ -87,11 +81,11 @@ func (r *ResponsePostSubject) Render(writer http.ResponseWriter, request *http.R
 }
 
 type ResponseGetSubjectVersion struct {
-	Subject    string     `json:"subject"`
-	ID         int32      `json:"id"`
-	Version    int32      `json:"version"`
-	SchemaType SchemaType `json:"schemaType,omitempty"`
-	Schema     string     `json:"schema"`
+	Subject    string             `json:"subject"`
+	ID         int32              `json:"id"`
+	Version    int32              `json:"version"`
+	SchemaType schemas.SchemaType `json:"schemaType,omitempty"`
+	Schema     string             `json:"schema"`
 }
 
 func (r *ResponseGetSubjectVersion) Render(writer http.ResponseWriter, request *http.Request) error {
