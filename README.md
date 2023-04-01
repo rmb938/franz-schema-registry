@@ -45,7 +45,7 @@ Franz Schema Registry is not production ready and is not recommended to be deplo
 
 1. Clone this repo
 2. Spin up a local postgres database via `docker-compose up`
-3. Run the application via `go run main.go`
+3. Run the application via `make run`
 
 ## Features Implemented
 
