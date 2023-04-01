@@ -590,6 +590,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 							return fmt.Errorf("error getting existing schema version references: %w", err)
 						}
 
+						// TODO: what if these references have references & what if they are the same name we would then cause an overlap
 						for _, schemaReference := range schemaReferences {
 							references[schemaReference.Name] = schemaReference.SubjectVersion.Schema.Schema
 						}
