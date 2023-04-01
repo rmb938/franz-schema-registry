@@ -455,6 +455,10 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 				return fmt.Errorf("error parsing schema: %w", err)
 			}
 
+			// TODO: Avro has a limitation where the Name & Namespace must be globally unique
+			//  We need to save this information in the schemas table so we can check this
+			//  If name is not given, don't do the check, we should have a nullable unique index for this
+
 			subject := &dbModels.Subject{}
 			// unscoped so we can get soft deleted subjects
 			err = tx.Unscoped().Clauses(forceIndexHint("idx_subjects_name")).
@@ -591,6 +595,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 						}
 
 						// TODO: what if these references have references & what if they are the same name we would then cause an overlap
+						//  I think it may be impossible to have the same name (it is for avro what about others?)
 						for _, schemaReference := range schemaReferences {
 							references[schemaReference.Name] = schemaReference.SubjectVersion.Schema.Schema
 						}
