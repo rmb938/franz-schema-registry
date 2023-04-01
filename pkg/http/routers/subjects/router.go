@@ -515,8 +515,8 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 					existingSchemas := make([]dbModels.Schema, 0)
 					query := tx.Model(&dbModels.Schema{}).Clauses(forceIndexHint("idx_subject_versions_subject_id")).
 						Joins("JOIN subject_versions ON subject_versions.schema_id = schemas.id").
-						Order("version desc").
-						Where("subject_id = ?", subject.ID)
+						Order("subject_versions.version desc").
+						Where("subject_versions.subject_id = ? AND subject_versions.deleted_at IS NULL", subject.ID)
 
 					// check if we are transitive
 					if !strings.HasSuffix(string(subject.Compatibility), "_TRANSITIVE") {
@@ -525,6 +525,8 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 					} else {
 						// we are transitive, this is most likely a very expensive operation, so it's probably not a good idea to do
 						// this query could return tons of rows and require tons of comparisons
+						// we probably could limit this impact by having a configurable maximum versions per subject
+						query = query.Limit(-1)
 					}
 
 					err := query.Find(&existingSchemas).Error

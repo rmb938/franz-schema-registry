@@ -23,7 +23,7 @@ func ParseSchema(rawSchema string, schemaType SchemaType) (ParsedSchema, error) 
 
 	switch schemaType {
 	case SchemaTypeAvro:
-		avroSchema, err := avro.Parse(rawSchema)
+		avroSchema, err := avro.ParseWithCache(rawSchema, "", &avro.SchemaCache{})
 		if err != nil {
 			return nil, fmt.Errorf("error parsing avro schema: %w", err)
 		}
