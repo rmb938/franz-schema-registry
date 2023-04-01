@@ -943,7 +943,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			if errorResponse == nil {
 				errorResponse = map[string]interface{}{
 					"error_code": 50001,
-					"message":    fmt.Sprintf("error getting subject schema version: %s", err),
+					"message":    fmt.Sprintf("error deleting subject schema version: %s", err),
 				}
 			}
 
@@ -957,7 +957,89 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 
 	// https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--subjects-(string-%20subject)-versions-versionId-%20version-referencedby
 	chiRouter.Get("/{subject}/versions/{version}/referencedby", func(writer http.ResponseWriter, request *http.Request) {
+		subjectName := chi.URLParam(request, "subject")
+		version := chi.URLParam(request, "version")
 
+		errorCode := http.StatusInternalServerError
+		var errorResponse map[string]interface{}
+
+		response := ResponseGetSubjectVersionReferencedBy{}
+
+		err := db.Transaction(func(tx *gorm.DB) error {
+			subject := &dbModels.Subject{}
+			err := tx.Clauses(forceIndexHint("idx_subjects_name")).
+				Where("name = ?", subjectName).First(subject).Error
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					errorCode = http.StatusNotFound
+					errorResponse = map[string]interface{}{
+						"error_code": 40401,
+						"message":    "subject not found",
+					}
+					return fmt.Errorf("subject not found")
+				}
+				return fmt.Errorf("error finding subject: %s: %w", subjectName, err)
+			}
+
+			getVersionTx := tx
+			if version == "-1" || version == "latest" {
+				getVersionTx = getVersionTx.Clauses(forceIndexHint("idx_subject_versions_subject_id")).Where("subject_id = ?", subject.ID).Order("version desc").Limit(1)
+			} else {
+				versionInt, err := strconv.ParseInt(version, 10, 32)
+				if err != nil {
+					errorCode = http.StatusUnprocessableEntity
+					errorResponse = map[string]interface{}{
+						"error_code": 42202,
+						"message":    "invalid version",
+					}
+					return fmt.Errorf("invalid version")
+				}
+				getVersionTx = getVersionTx.Clauses(forceIndexHint("idx_subject_id_version")).Where("subject_id = ? AND VERSION = ?", subject.ID, versionInt)
+			}
+			versionModel := &dbModels.SubjectVersion{}
+			err = getVersionTx.First(&versionModel).Error
+			if err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					errorCode = http.StatusNotFound
+					errorResponse = map[string]interface{}{
+						"error_code": 40402,
+						"message":    "version not found",
+					}
+					return fmt.Errorf("version not found")
+				}
+				return fmt.Errorf("error finding version: %s: %w", version, err)
+			}
+
+			fmt.Printf("%s\n", versionModel.ID)
+
+			schemaReferences := make([]dbModels.SchemaReference, 0)
+			err = tx.Clauses(forceIndexHint("idx_subject_version_id")).Joins("Schema").Where("schema_references.subject_version_id = ?", versionModel.ID).Find(&schemaReferences).Error
+			if err != nil {
+				return fmt.Errorf("error finding references: %w", err)
+			}
+
+			for _, reference := range schemaReferences {
+				response = append(response, reference.Schema.GlobalID)
+			}
+
+			return nil
+		})
+
+		if err != nil {
+			render.Status(request, errorCode)
+			if errorResponse == nil {
+				errorResponse = map[string]interface{}{
+					"error_code": 50001,
+					"message":    fmt.Sprintf("error getting subject schema version referenced by: %s", err),
+				}
+			}
+
+			render.JSON(writer, request, errorResponse)
+			return
+		}
+
+		render.Status(request, http.StatusOK)
+		render.Render(writer, request, response)
 	})
 
 	return chiRouter

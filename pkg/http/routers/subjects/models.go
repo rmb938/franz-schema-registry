@@ -125,3 +125,9 @@ type ResponseGetSubjectVersion struct {
 func (r *ResponseGetSubjectVersion) Render(writer http.ResponseWriter, request *http.Request) error {
 	return nil
 }
+
+type ResponseGetSubjectVersionReferencedBy []int32
+
+func (r ResponseGetSubjectVersionReferencedBy) Render(writer http.ResponseWriter, request *http.Request) error {
+	return nil
+}

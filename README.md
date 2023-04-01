@@ -62,6 +62,7 @@ Franz Schema Registry is not production ready and is not recommended to be deplo
   - [ ] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--schemas-ids-int-%20id-schema
   - [ ] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--schemas-types-
   - [ ] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--schemas-ids-int-%20id-versions
+  - [ ] Unit & e2e Testing
 - [ ] Full `/subjects` API compatibility
   - [X] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--subjects
   - [X] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--subjects-(string-%20subject)-versions
@@ -71,21 +72,25 @@ Franz Schema Registry is not production ready and is not recommended to be deplo
   - [X] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#post--subjects-(string-%20subject)-versions
   - [X] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#post--subjects-(string-%20subject)
   - [X] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#delete--subjects-(string-%20subject)-versions-(versionId-%20version)
-  - [ ] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--subjects-(string-%20subject)-versions-versionId-%20version-referencedby
+  - [X] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--subjects-(string-%20subject)-versions-versionId-%20version-referencedby
+  - [ ] Unit & e2e Testing
 - [ ] Full `/mode` API compatibility
   - [ ] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--mode
   - [ ] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#put--mode
   - [ ] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--mode-(string-%20subject)
   - [ ] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#put--mode-(string-%20subject)
   - [ ] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#delete--mode-(string-%20subject)
+  - [ ] Unit & e2e Testing
 - [ ] Full `/compatibility` API compatibility
   - [ ] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#post--compatibility-subjects-(string-%20subject)-versions-(versionId-%20version)
   - [ ] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#post--compatibility-subjects-(string-%20subject)-versions
+  - [ ] Unit & e2e Testing
 - [ ] Full `/config` API compatibility
   - [ ] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#put--config
   - [ ] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--config
   - [ ] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#put--config-(string-%20subject)
   - [ ] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#get--config-(string-%20subject)
   - [ ] https://docs.confluent.io/platform/current/schema-registry/develop/api.html#delete--config-(string-%20subject)
+  - [ ] Unit & e2e Testing
 - [ ] Full `/exporters` API compatibility
   - This most likely will not be implemented
