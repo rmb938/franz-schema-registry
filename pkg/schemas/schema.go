@@ -18,12 +18,21 @@ type ParsedSchema interface {
 	IsBackwardsCompatible(previousSchema ParsedSchema) (bool, error)
 }
 
-func ParseSchema(rawSchema string, schemaType SchemaType) (ParsedSchema, error) {
+func ParseSchema(rawSchema string, schemaType SchemaType, references map[string]string) (ParsedSchema, error) {
 	var parsedSchema ParsedSchema
 
 	switch schemaType {
 	case SchemaTypeAvro:
-		avroSchema, err := avro.ParseWithCache(rawSchema, "", &avro.SchemaCache{})
+		avroCache := &avro.SchemaCache{}
+
+		for _, reference := range references {
+			_, err := avro.ParseWithCache(reference, "", avroCache)
+			if err != nil {
+				return nil, fmt.Errorf("error parsing avro schema reference: %w", err)
+			}
+		}
+
+		avroSchema, err := avro.ParseWithCache(rawSchema, "", avroCache)
 		if err != nil {
 			return nil, fmt.Errorf("error parsing avro schema: %w", err)
 		}

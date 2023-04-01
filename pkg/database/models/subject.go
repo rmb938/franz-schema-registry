@@ -37,4 +37,7 @@ type SubjectVersion struct {
 	Version   int32
 	CreatedAt time.Time
 	DeletedAt gorm.DeletedAt
+
+	Subject Subject
+	Schema  Schema
 }

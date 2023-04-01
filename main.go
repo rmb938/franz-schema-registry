@@ -60,5 +60,8 @@ func main() {
 	r.Mount("/schemas", schemas.NewRouter())
 	r.Mount("/subjects", subjects.NewRouter(db))
 
-	http.ListenAndServe(":8081", r)
+	if err := http.ListenAndServe(":9091", r); err != nil {
+		log.Error(err, "error running api server")
+		os.Exit(1)
+	}
 }

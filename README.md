@@ -52,7 +52,7 @@ Franz Schema Registry is not production ready and is not recommended to be deplo
 - [X] Avro Schemas
 - [ ] Protobuf Schemas
 - [ ] JSON Schemas
-- [ ] Schema References
+- [X] Schema References
 - [X] Schema Compatibility Checks
 - [ ] Schema Normalization - https://docs.confluent.io/platform/current/schema-registry/fundamentals/serdes-develop/index.html#schema-normalization
 - [ ] Prometheus Metrics

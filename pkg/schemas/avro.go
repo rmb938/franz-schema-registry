@@ -179,6 +179,18 @@ func (s *ParsedAvroSchema) isBackwardsCompatible(writerAvroSchema, readerAvroSch
 
 			return true, nil
 		}
+		break
+	case *avro.RefSchema:
+		if readerAvroSchema.Type() == avro.Ref {
+			refReaderAvroSchema := readerAvroSchema.(*avro.RefSchema)
+
+			if v.String() != refReaderAvroSchema.String() {
+				return false, nil
+			}
+
+			return true, nil
+		}
+		break
 	default:
 		return false, fmt.Errorf("missing compatibility check for avro type: %T", v)
 	}

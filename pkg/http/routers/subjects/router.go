@@ -253,7 +253,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			}
 
 			response.Subject = subjectName
-			response.ID = schema.SchemaID
+			response.ID = schema.GlobalID
 			response.Version = versionModel.Version
 			response.SchemaType = schemas.SchemaType(schema.SchemaType)
 			response.Schema = schema.Schema
@@ -405,24 +405,59 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			}
 		}
 
-		parsedSchema, err := schemas.ParseSchema(data.Schema, schemaType)
-		if err != nil {
-			render.Status(request, http.StatusBadRequest)
-			render.JSON(writer, request, map[string]interface{}{
-				"error_code": http.StatusBadRequest,
-				"message":    fmt.Sprintf("error parsing schema: %s", err),
-			})
-			return
-		}
-
 		errorCode := http.StatusInternalServerError
 		var errorResponse map[string]interface{}
 
-		err = db.Transaction(func(tx *gorm.DB) error {
+		err := db.Transaction(func(tx *gorm.DB) error {
+
+			subjectVersionReferences := make(map[string]dbModels.SubjectVersion)
+			newRawReferences := make(map[string]string)
+			for _, reference := range data.References {
+				subjectVersion := &dbModels.SubjectVersion{}
+				err := tx.Joins("Schema").Joins("Subject").Where("\"Subject\".\"name\" = ? AND subject_versions.version = ?", reference.Subject, reference.Version).First(subjectVersion).Error
+				if err != nil {
+					if errors.Is(err, gorm.ErrRecordNotFound) {
+						errorCode = http.StatusNotFound
+						errorResponse = map[string]interface{}{
+							"error_code": 42201,
+							"message":    fmt.Sprintf("No schema reference found for subject %s and version %d", reference.Subject, reference.Version),
+						}
+						return fmt.Errorf("no schema reference found for subject %s and version %d", reference.Subject, reference.Version)
+					}
+					errorCode = http.StatusInternalServerError
+					errorResponse = map[string]interface{}{
+						"error_code": http.StatusInternalServerError,
+						"message":    fmt.Sprintf("error finding reference to subject %s and version %d: %s", reference.Subject, reference.Version, err),
+					}
+					return fmt.Errorf("error finding reference to subject %s and version %d: %w", reference.Subject, reference.Version, err)
+				}
+
+				if dbSchemaType != subjectVersion.Schema.SchemaType {
+					errorCode = http.StatusNotFound
+					errorResponse = map[string]interface{}{
+						"error_code": 42201,
+						"message":    fmt.Sprintf("Cannot reference schema with a different type"),
+					}
+					return fmt.Errorf("cannot reference schema with a different type")
+				}
+
+				newRawReferences[reference.Name] = subjectVersion.Schema.Schema
+				subjectVersionReferences[reference.Name] = *subjectVersion
+			}
+
+			parsedSchema, err := schemas.ParseSchema(data.Schema, schemaType, newRawReferences)
+			if err != nil {
+				errorCode = http.StatusBadRequest
+				errorResponse = map[string]interface{}{
+					"error_code": http.StatusBadRequest,
+					"message":    fmt.Sprintf("error parsing schema: %s", err),
+				}
+				return fmt.Errorf("error parsing schema: %w", err)
+			}
 
 			subject := &dbModels.Subject{}
 			// unscoped so we can get soft deleted subjects
-			err := tx.Unscoped().Clauses(forceIndexHint("idx_subjects_name")).
+			err = tx.Unscoped().Clauses(forceIndexHint("idx_subjects_name")).
 				Where("name = ?", subjectName).First(subject).Error
 			if err != nil {
 				if errors.Is(err, gorm.ErrRecordNotFound) == false {
@@ -486,7 +521,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 				// create it
 				schema = &dbModels.Schema{
 					ID:         uuid.New(),
-					SchemaID:   int32(nextId),
+					GlobalID:   int32(nextId),
 					Schema:     data.Schema,
 					Hash:       data.calculatedHash,
 					SchemaType: dbSchemaType,
@@ -494,8 +529,20 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 				if err := tx.Create(schema).Error; err != nil {
 					return fmt.Errorf("error creating schema for subject: %s: %w", subjectName, err)
 				}
+
+				for name, reference := range subjectVersionReferences {
+					dbReference := &dbModels.SchemaReference{
+						ID:               uuid.New(),
+						SchemaID:         schema.ID,    // The schema that we are creating
+						SubjectVersionID: reference.ID, // The subject version that we are referencing
+						Name:             name,
+					}
+					if err := tx.Create(dbReference).Error; err != nil {
+						return fmt.Errorf("error creating schema reference for subject: %s: %w", subjectName, err)
+					}
+				}
 			}
-			response.ID = schema.SchemaID
+			response.ID = schema.GlobalID
 
 			subjectVersion := &dbModels.SubjectVersion{}
 			err = tx.Clauses(forceIndexHint("idx_subject_id_schema_id")).
@@ -512,11 +559,8 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 				// checking compatibility
 				if subject.Compatibility != dbModels.SubjectCompatibilityNone {
 
-					existingSchemas := make([]dbModels.Schema, 0)
-					query := tx.Model(&dbModels.Schema{}).Clauses(forceIndexHint("idx_subject_versions_subject_id")).
-						Joins("JOIN subject_versions ON subject_versions.schema_id = schemas.id").
-						Order("subject_versions.version desc").
-						Where("subject_versions.subject_id = ? AND subject_versions.deleted_at IS NULL", subject.ID)
+					existingSchemaVersions := make([]dbModels.SubjectVersion, 0)
+					query := tx.Joins("Schema").Where("subject_versions.subject_id = ?", subject.ID).Order("subject_versions.version desc").Find(&existingSchemaVersions)
 
 					// check if we are transitive
 					if !strings.HasSuffix(string(subject.Compatibility), "_TRANSITIVE") {
@@ -529,14 +573,28 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 						query = query.Limit(-1)
 					}
 
-					err := query.Find(&existingSchemas).Error
+					err := query.Find(&existingSchemaVersions).Error
 					if err != nil {
 						return fmt.Errorf("error finding existing schemas for compatibility checking: %w", err)
 					}
 
 					var existingParsedSchemas []schemas.ParsedSchema
-					for _, existingSchemaModel := range existingSchemas {
-						existingParsedSchema, err := schemas.ParseSchema(existingSchemaModel.Schema, schemaType)
+					for _, existingSchemaVersion := range existingSchemaVersions {
+						references := make(map[string]string)
+
+						schemaReferences := make([]dbModels.SchemaReference, 0)
+						err := tx.Clauses(forceIndexHint("idx_schema_id")).Joins("SubjectVersion.Schema").
+							Where("schema_references.schema_id = ?", existingSchemaVersion.Schema.ID).
+							Find(&schemaReferences).Error
+						if err != nil {
+							return fmt.Errorf("error getting existing schema version references: %w", err)
+						}
+
+						for _, schemaReference := range schemaReferences {
+							references[schemaReference.Name] = schemaReference.SubjectVersion.Schema.Schema
+						}
+
+						existingParsedSchema, err := schemas.ParseSchema(existingSchemaVersion.Schema.Schema, schemaType, references)
 						if err != nil {
 							errorCode = http.StatusInternalServerError
 							errorResponse = map[string]interface{}{
@@ -789,7 +847,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 			}
 
 			response.Subject = subject.Name
-			response.ID = schema.SchemaID
+			response.ID = schema.GlobalID
 			response.Version = subjectVersion.Version
 			response.Schema = schema.Schema
 

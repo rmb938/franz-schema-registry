@@ -11,7 +11,7 @@ require (
 	github.com/hamba/avro/v2 v2.7.0
 	go.uber.org/zap v1.24.0
 	gorm.io/driver/postgres v1.5.0
-	gorm.io/gorm v1.24.7-0.20230306060331-85eaf9eeda11
+	gorm.io/gorm v1.24.7-0.20230324020705-b444011d094d
 	gorm.io/hints v1.1.1
 )
 
