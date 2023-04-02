@@ -2,6 +2,7 @@ package subjects
 
 import (
 	"fmt"
+	"os"
 	"testing"
 
 	"github.com/google/uuid"
@@ -12,13 +13,39 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestGetSubjects(t *testing.T) {
-	// setup DB
-	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{
-		DisableNestedTransaction: true,
-	})
+func TempDatabase(t testing.TB) (*gorm.DB, string) {
+	f, err := os.CreateTemp("", "franz-go-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+
+	var db *gorm.DB
+
+	defer func() {
+		if err != nil {
+			err := os.Remove(f.Name())
+			if err != nil {
+				t.Error("db file remove error while in temp database:", err)
+			}
+		}
+	}()
+
+	db, err = gorm.Open(sqlite.Open(fmt.Sprintf("%s", f.Name())))
 	assert.NoError(t, err)
 	assert.NoError(t, migrations.RunMigrations(db))
+
+	return db, f.Name()
+}
+
+func TestGetSubjects(t *testing.T) {
+	db, dbFile := TempDatabase(t)
+	defer func() {
+		err := os.Remove(dbFile)
+		if err != nil {
+			t.Error("db file remove error:", err)
+		}
+	}()
 
 	// get subjects on empty db
 	resp, err := getSubjects(db, false)

@@ -22,13 +22,13 @@ func getSubjectVersionsReferencedBySubjectNameAndVersion(tx *gorm.DB, referenceN
 	err := tx.Joins("Schema").Joins("Subject").Where("\"Subject\".\"name\" = ? AND subject_versions.version = ?", subjectName, version).First(subjectVersion).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil, routers.NewAPIError(http.StatusUnprocessableEntity, 42201, fmt.Errorf("no schema reference found for subject %s and version %d", subjectName, version))
+			return nil, nil, routers.NewAPIError(http.StatusNotFound, 40402, fmt.Errorf("no schema reference found for subject %s and version %d", subjectName, version))
 		}
 		return nil, nil, fmt.Errorf("error finding reference to subject %s and version %d: %w", subjectName, version, err)
 	}
 
 	if schemaType != subjectVersion.Schema.SchemaType {
-		return nil, nil, routers.NewAPIError(http.StatusUnprocessableEntity, 42201, fmt.Errorf("cannot reference schema with a different type"))
+		return nil, nil, routers.NewAPIError(http.StatusConflict, 40901, fmt.Errorf("cannot reference schema with a different type"))
 	}
 
 	subReferences, err := getSchemaReferencesReferencedBySchemaID(tx, subjectVersion.Schema.ID, 0)
@@ -56,7 +56,7 @@ func getSchemaReferencesReferencedBySchemaID(tx *gorm.DB, schemaID uuid.UUID, re
 		// we need something here to stop long reference chains as the longer the chain the more db queries and the longer it'll take
 		// too long of a chain will eventually take things down
 		// TODO: make this configurable with a sane default
-		return nil, routers.NewAPIError(http.StatusUnprocessableEntity, 42201, fmt.Errorf("hit recursive schema limit, reference chain is too deep"))
+		return nil, routers.NewAPIError(http.StatusConflict, 40902, fmt.Errorf("hit recursive schema limit, reference chain is too deep"))
 	}
 
 	schemaReferences := make([]dbModels.SchemaReference, 0)
@@ -88,7 +88,7 @@ func getSchemaReferencesReferencedBySchemaID(tx *gorm.DB, schemaID uuid.UUID, re
 	return totalSchemaReferences, nil
 }
 
-func postSubjectVersion(db *gorm.DB, subjectName string, data *RequestPostSubjectVersion) (*ResponsePostSubjectVersion, error) {
+func postSubjectVersion(db *gorm.DB, nextSequenceTx *gorm.DB, subjectName string, data *RequestPostSubjectVersion) (*ResponsePostSubjectVersion, error) {
 	resp := &ResponsePostSubjectVersion{}
 
 	schemaType := schemas.SchemaTypeAvro
@@ -109,6 +109,9 @@ func postSubjectVersion(db *gorm.DB, subjectName string, data *RequestPostSubjec
 	}
 
 	err := db.Transaction(func(tx *gorm.DB) error {
+		if nextSequenceTx == nil {
+			nextSequenceTx = tx
+		}
 
 		subjectVersionReferences := make(map[string]dbModels.SubjectVersion)
 		newRawReferences := make(map[string]string)
@@ -279,7 +282,7 @@ func postSubjectVersion(db *gorm.DB, subjectName string, data *RequestPostSubjec
 		// if schema is nil, create it
 		if schema == nil {
 			// get the next sequence, use the normal db as we don't want a nested transaction
-			nextId, err := dbModels.NextSequenceID(db, dbModels.SequenceNameSchemaIDs)
+			nextId, err := dbModels.NextSequenceID(nextSequenceTx, dbModels.SequenceNameSchemaIDs)
 			if err != nil {
 				return routers.NewAPIError(http.StatusInternalServerError, 5001, fmt.Errorf("error generating next schema id: %w", err))
 			}

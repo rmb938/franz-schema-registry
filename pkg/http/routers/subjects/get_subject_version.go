@@ -24,10 +24,10 @@ func getSubjectVersion(db *gorm.DB, subjectName string, version string) (*Respon
 			return fmt.Errorf("error finding subject: %s: %w", subjectName, err)
 		}
 
-		versionModel, err := getSubjectVersionBySubjectID(tx, subject.ID, version)
+		versionModel, err := getSubjectVersionBySubjectID(tx, subject.ID, version, false)
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return routers.NewAPIError(http.StatusNotFound, 40401, fmt.Errorf("version not found"))
+				return routers.NewAPIError(http.StatusNotFound, 40402, fmt.Errorf("version not found"))
 			}
 			return fmt.Errorf("error finding version %s for subject %s: %w", version, subjectName, err)
 		}

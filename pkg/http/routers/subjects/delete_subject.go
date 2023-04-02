@@ -34,17 +34,15 @@ func deleteSubject(db *gorm.DB, subjectName string, permanent bool) (*ResponseDe
 		if permanent {
 			deleteVersionsTx = deleteVersionsTx.Unscoped()
 		}
-
-		err = tx.Clauses(clause.Returning{}).Where("subject_id = ?", subject.ID).Delete(&subjectVersions).Error
+		err = deleteVersionsTx.Clauses(clause.Returning{}).Where("subject_id = ?", subject.ID).Delete(&subjectVersions).Error
 		if err != nil {
 			return fmt.Errorf("error deleting subject versions: %w", err)
 		}
 
 		deleteSubjectTx := tx
 		if permanent {
-			deleteSubjectTx = deleteVersionsTx.Unscoped()
+			deleteSubjectTx = deleteSubjectTx.Unscoped()
 		}
-
 		err = deleteSubjectTx.Delete(subject).Error
 		if err != nil {
 			return fmt.Errorf("error deleting subject versions: %w", err)

@@ -11,3 +11,6 @@ run: fmt vet
 
 test: fmt vet
 	go test ./... -race -covermode=atomic -coverprofile=coverage.out
+
+show-coverage:
+	go tool cover -html=coverage.out

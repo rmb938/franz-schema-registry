@@ -15,15 +15,17 @@ func postSubject(db *gorm.DB, subjectName string, data *RequestPostSubject) (*Re
 	resp := &ResponsePostSubject{}
 
 	schemaType := schemas.SchemaTypeAvro
+	dbSchemaType := dbModels.SchemaTypeAvro
 	if len(data.SchemaType) > 0 {
+		schemaType = data.SchemaType
 		switch data.SchemaType {
 		case schemas.SchemaTypeAvro:
-			schemaType = schemas.SchemaTypeAvro
+			dbSchemaType = dbModels.SchemaTypeAvro
 		// TODO: uncomment once these other types are supported
 		// case SchemaTypeJSON:
-		// 	schemaType = SchemaTypeJSON
+		// 	dbSchemaType = dbModels.SchemaTypeJSON
 		// case SchemaTypeProtobuf:
-		// 	schemaType = SchemaTypeProtobuf
+		// 	dbSchemaType = dbModels.SchemaTypeProtobuf
 		default:
 			return nil, routers.NewAPIError(http.StatusBadRequest, http.StatusBadRequest, fmt.Errorf("unknown schema type: %s", data.SchemaType))
 		}
@@ -38,9 +40,28 @@ func postSubject(db *gorm.DB, subjectName string, data *RequestPostSubject) (*Re
 			return fmt.Errorf("error finding subject: %s: %w", subjectName, err)
 		}
 
+		subjectVersionReferences := make(map[string]dbModels.SubjectVersion)
+		newRawReferences := make(map[string]string)
+		for _, reference := range data.References {
+			referencesSlice, referencesMap, err := getSubjectVersionsReferencedBySubjectNameAndVersion(tx, reference.Name, reference.Subject, reference.Version, dbSchemaType)
+			if err != nil {
+				return err
+			}
+
+			for _, name := range referencesSlice {
+				subjectVersionReferences[name] = referencesMap[name]
+				newRawReferences[name] = referencesMap[name].Schema.Schema
+			}
+		}
+
+		_, err = schemas.ParseSchema(data.Schema, schemaType, newRawReferences)
+		if err != nil {
+			return routers.NewAPIError(http.StatusUnprocessableEntity, 42201, fmt.Errorf("error parsing schema: %w", err))
+		}
+
 		schema := &dbModels.Schema{}
 		err = tx.Clauses(forceIndexHint("idx_schemas_hash")).
-			Where("hash = ? AND schema_type", data.calculatedHash, schemaType).First(schema).Error
+			Where("hash = ? AND schema_type = ?", data.calculatedHash, schemaType).First(schema).Error
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return routers.NewAPIError(http.StatusNotFound, 40403, fmt.Errorf("schema not found"))

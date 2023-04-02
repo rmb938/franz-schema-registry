@@ -21,7 +21,11 @@ func deleteSubjectVersion(db *gorm.DB, subjectName string, version string, perma
 			return fmt.Errorf("error finding subject: %s: %w", subjectName, err)
 		}
 
-		versionModel, err := getSubjectVersionBySubjectID(tx, subject.ID, version)
+		if permanent && (version == "-1" || version == "latest") {
+			return routers.NewAPIError(http.StatusBadRequest, 40001, fmt.Errorf("cannot permantly delete latest version"))
+		}
+
+		versionModel, err := getSubjectVersionBySubjectID(tx, subject.ID, version, permanent)
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return routers.NewAPIError(http.StatusNotFound, 40401, fmt.Errorf("version not found"))
@@ -30,12 +34,11 @@ func deleteSubjectVersion(db *gorm.DB, subjectName string, version string, perma
 		}
 
 		if permanent && versionModel.DeletedAt.Valid == false {
-			return routers.NewAPIError(http.StatusConflict, 40901, fmt.Errorf("must soft delete first"))
+			return routers.NewAPIError(http.StatusConflict, 40901, fmt.Errorf("must soft delete version %d first", versionModel.Version))
 		}
 
 		deleteTx := tx
-		if permanent && version != "-1" && version != "latest" {
-			// TODO: we probably want to error if version is -1 or latest since we don't actually hard delete in that case
+		if permanent {
 			deleteTx = deleteTx.Unscoped()
 		}
 

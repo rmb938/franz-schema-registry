@@ -129,7 +129,7 @@ func NewRouter(db *gorm.DB) *chi.Mux {
 
 		if v == nil {
 			var err error
-			v, err = postSubjectVersion(db, subjectName, data)
+			v, err = postSubjectVersion(db, db, subjectName, data)
 			if err != nil {
 				v = routers.NewAPIError(http.StatusInternalServerError, 5001, fmt.Errorf("error saving schema: %w", err))
 				if renderer, ok := err.(render.Renderer); ok {

@@ -21,7 +21,7 @@ func getSubjectByName(tx *gorm.DB, subjectName string) (*dbModels.Subject, error
 	return subject, nil
 }
 
-func getSubjectVersionBySubjectID(tx *gorm.DB, subjectID uuid.UUID, version string) (*dbModels.SubjectVersion, error) {
+func getSubjectVersionBySubjectID(tx *gorm.DB, subjectID uuid.UUID, version string, includeDeleted bool) (*dbModels.SubjectVersion, error) {
 	getVersionTx := tx
 	if version == "-1" || version == "latest" {
 		getVersionTx = getVersionTx.Clauses(forceIndexHint("idx_subject_versions_subject_id")).Where("subject_id = ?", subjectID).Order("version desc").Limit(1)
@@ -31,6 +31,10 @@ func getSubjectVersionBySubjectID(tx *gorm.DB, subjectID uuid.UUID, version stri
 			return nil, routers.NewAPIError(http.StatusUnprocessableEntity, 42202, fmt.Errorf("invalid version"))
 		}
 		getVersionTx = getVersionTx.Clauses(forceIndexHint("idx_subject_id_version")).Where("subject_id = ? AND VERSION = ?", subjectID, versionInt)
+	}
+
+	if includeDeleted {
+		getVersionTx = getVersionTx.Unscoped()
 	}
 
 	versionModel := &dbModels.SubjectVersion{}
