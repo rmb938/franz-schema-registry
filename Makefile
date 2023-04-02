@@ -8,3 +8,6 @@ vet:
 
 run: fmt vet
 	go run ./main.go
+
+test: fmt vet
+	go test ./... -race -covermode=atomic -coverprofile=coverage.out

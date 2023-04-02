@@ -28,7 +28,7 @@ func ParseSchema(rawSchema string, schemaType SchemaType, references map[string]
 		for _, reference := range references {
 			_, err := avro.ParseWithCache(reference, "", avroCache)
 			if err != nil {
-				return nil, fmt.Errorf("error parsing avro schema reference: %w", err)
+				return nil, fmt.Errorf("error parsing avro schema reference %s: %w", reference, err)
 			}
 		}
 
@@ -37,10 +37,15 @@ func ParseSchema(rawSchema string, schemaType SchemaType, references map[string]
 			return nil, fmt.Errorf("error parsing avro schema: %w", err)
 		}
 
+		if namedSchema, ok := avroSchema.(avro.NamedSchema); ok {
+			if _, ok := references[namedSchema.Name()]; ok {
+				return nil, fmt.Errorf("can't redefine: %s", namedSchema.Name())
+			}
+		}
+
 		parsedSchema = &ParsedAvroSchema{
 			avroSchema: avroSchema,
 		}
-
 	default:
 		return nil, fmt.Errorf("unknown schema type: %s", schemaType)
 	}

@@ -17,7 +17,6 @@ services:
       - e2e
     image: confluentinc/cp-zookeeper:7.3.0
     hostname: zookeeper
-    container_name: zookeeper
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
@@ -29,7 +28,6 @@ services:
       - e2e
     image: confluentinc/cp-kafka:7.3.0
     hostname: broker
-    container_name: broker
     depends_on:
       - zookeeper
     environment:
@@ -51,7 +49,6 @@ services:
       - e2e
     image: confluentinc/cp-schema-registry:7.3.0
     hostname: schema-registry
-    container_name: schema-registry
     depends_on:
       - broker
     ports:

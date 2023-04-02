@@ -12,6 +12,30 @@ import (
 	"github.com/rmb938/franz-schema-registry/pkg/schemas"
 )
 
+type ResponseGetSubjects []string
+
+func (r ResponseGetSubjects) Render(writer http.ResponseWriter, request *http.Request) error {
+	return nil
+}
+
+type ResponseGetSubjectVersions []int32
+
+func (r ResponseGetSubjectVersions) Render(writer http.ResponseWriter, request *http.Request) error {
+	return nil
+}
+
+type ResponseDeleteSubjectVersions []int32
+
+func (r ResponseDeleteSubjectVersions) Render(writer http.ResponseWriter, request *http.Request) error {
+	return nil
+}
+
+type ResponseGetSubjectVersionSchema string
+
+func (r ResponseGetSubjectVersionSchema) Render(writer http.ResponseWriter, request *http.Request) error {
+	return nil
+}
+
 type SubjectReference struct {
 	Name    string `json:"name"`
 	Subject string `json:"subject"`
@@ -44,7 +68,7 @@ func (r *RequestPostSubjectVersion) Bind(request *http.Request) error {
 		foundReferenceNames[reference.Name] = nil
 	}
 
-	// add references to the hash, references also make the schema unique
+	// add references to the hash as references also make the schema unique
 	// sort references by name before we add them so if only the ordering changes the hash is the same
 	sort.Slice(r.References, func(i, j int) bool {
 		cmp := strings.Compare(r.References[i].Name, r.References[j].Name)
@@ -111,6 +135,12 @@ type ResponsePostSubject struct {
 }
 
 func (r *ResponsePostSubject) Render(writer http.ResponseWriter, request *http.Request) error {
+	return nil
+}
+
+type ResponseDeleteSubjectVersion int32
+
+func (r ResponseDeleteSubjectVersion) Render(writer http.ResponseWriter, request *http.Request) error {
 	return nil
 }
 
