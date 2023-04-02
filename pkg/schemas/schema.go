@@ -18,7 +18,7 @@ type ParsedSchema interface {
 	IsBackwardsCompatible(previousSchema ParsedSchema) (bool, error)
 }
 
-func ParseSchema(rawSchema string, schemaType SchemaType, rawReferences map[string]string) (ParsedSchema, error) {
+func ParseSchema(rawSchema string, schemaType SchemaType, rawReferences []string) (ParsedSchema, error) {
 	var parsedSchema ParsedSchema
 
 	switch schemaType {
@@ -26,12 +26,17 @@ func ParseSchema(rawSchema string, schemaType SchemaType, rawReferences map[stri
 		avroCache := &avro.SchemaCache{}
 
 		references := make(map[string]avro.Schema)
-		for name, reference := range rawReferences {
+		for _, reference := range rawReferences {
 			schema, err := avro.ParseWithCache(reference, "", avroCache)
 			if err != nil {
 				return nil, fmt.Errorf("error parsing avro schema reference %s: %w", reference, err)
 			}
-			references[name] = schema
+
+			// only add to references if it's a named schema
+			// if it isn't there is nothing to overwrite
+			if namedSchema, ok := schema.(avro.NamedSchema); ok {
+				references[namedSchema.FullName()] = schema
+			}
 		}
 
 		avroSchema, err := avro.ParseWithCache(rawSchema, "", avroCache)
@@ -39,22 +44,12 @@ func ParseSchema(rawSchema string, schemaType SchemaType, rawReferences map[stri
 			return nil, fmt.Errorf("error parsing avro schema: %w", err)
 		}
 
-		// make sure we aren't doing weird naming things
-		if namedSchema, ok := avroSchema.(avro.NamedSchema); ok {
-			// make sure our schema's name isn't the same as a reference
-
-			if name, ok := isAvroOverrideReferenceName(references, namedSchema); ok {
+		// schema is a record
+		if recordSchema, ok := avroSchema.(*avro.RecordSchema); ok {
+			// so make sure it isn't overwriting any references
+			if name, ok := isAvroOverrideReferenceName(references, recordSchema, nil); ok {
 				return nil, fmt.Errorf("can't redefine: %s", name)
 			}
-
-			// check if self referencing
-			//  while self-references are allowed per avro spec it is not allowed in schema registry
-			// if recordSchema, ok := avroSchema.(*avro.RecordSchema); ok {
-			// 	if isAvroSelfReferencing(recordSchema.Name(), recordSchema) {
-			// 		fmt.Println(avroSchema.String())
-			// 		return nil, fmt.Errorf("can't self-reference: %s", namedSchema.Name())
-			// 	}
-			// }
 		}
 
 		parsedSchema = &ParsedAvroSchema{
@@ -67,57 +62,66 @@ func ParseSchema(rawSchema string, schemaType SchemaType, rawReferences map[stri
 	return parsedSchema, nil
 }
 
-func isAvroOverrideReferenceName(references map[string]avro.Schema, namedSchema avro.NamedSchema) (string, bool) {
-	if ref, ok := references[namedSchema.Name()]; ok {
-		// if we are the reference we will be the same name, so only return true if we are not the reference
-		if ref == namedSchema {
-			return "", false
-		}
+func isAvroOverrideReferenceName(references map[string]avro.Schema, recordSchema *avro.RecordSchema, seenRecords map[string]interface{}) (string, bool) {
+	if seenRecords == nil {
+		seenRecords = make(map[string]interface{})
 	}
 
-	if recordSchema, ok := namedSchema.(*avro.RecordSchema); ok {
-		for _, field := range recordSchema.Fields() {
-			if refSchema, ok := field.Type().(*avro.RefSchema); ok {
-				if subNamedSchema, ok := refSchema.Schema().(avro.NamedSchema); ok {
-					// if we are referencing ourselves continue
-					if refSchema.Schema() == namedSchema {
-						continue
+	seenRecords[recordSchema.FullName()] = nil
+
+	// get all the record fields
+	for _, field := range recordSchema.Fields() {
+
+		// field is a reference
+		if refSchema, ok := field.Type().(*avro.RefSchema); ok {
+
+			// to a record
+			if subRecord, ok := refSchema.Schema().(*avro.RecordSchema); ok {
+				recordName := subRecord.FullName()
+
+				// record name is in the references
+				if ref, ok := references[recordName]; ok {
+					// record is not the reference so we are duplicated
+					if ref != subRecord {
+						// return normal name since it's overwriting in the same namespace
+						return subRecord.Name(), true
 					}
 
-					// TODO: if we have a nested reference that eventually references something above us
-					//  we end up in a loop and stacktrace
-
-					return isAvroOverrideReferenceName(references, subNamedSchema)
+					// record is the reference so continue to new field
+					continue
+				} else {
+					// record name is NOT in the references, and the name has not been seen our name before
+					if _, ok := seenRecords[recordName]; !ok {
+						seenRecords[recordName] = nil
+						return isAvroOverrideReferenceName(references, subRecord, seenRecords)
+					}
 				}
 			}
-			if subRecord, ok := field.Type().(*avro.RecordSchema); ok {
-				return isAvroOverrideReferenceName(references, subRecord)
+		}
+
+		// field is record
+		if subRecord, ok := field.Type().(*avro.RecordSchema); ok {
+			recordName := subRecord.FullName()
+
+			// record name is in the references
+			if ref, ok := references[recordName]; ok {
+				// record is not the reference so we are duplicated
+				if ref != subRecord {
+					// return normal name since it's overwriting in the same namespace
+					return subRecord.Name(), true
+				}
+
+				// record is the reference so continue to new field
+				continue
+			} else {
+				// record name is NOT in the references, and the name has not been seen our name before
+				if _, ok := seenRecords[recordName]; !ok {
+					seenRecords[recordName] = nil
+					return isAvroOverrideReferenceName(references, subRecord, seenRecords)
+				}
 			}
 		}
 	}
 
 	return "", false
 }
-
-// func isAvroSelfReferencing(name string, recordSchema *avro.RecordSchema) bool {
-// 	for _, field := range recordSchema.Fields() {
-// 		if refSchema, ok := field.Type().(*avro.RefSchema); ok {
-// 			if namedSchema, ok := refSchema.Schema().(avro.NamedSchema); ok {
-// 				if namedSchema.Name() == name {
-// 					fmt.Printf("Field %s is a reference to %s\n", field.Name(), namedSchema.Name())
-// 					return true
-// 				}
-//
-// 				if subRecord, ok := namedSchema.(*avro.RecordSchema); ok {
-// 					return isAvroSelfReferencing(name, subRecord)
-// 				}
-// 			}
-// 		}
-//
-// 		if subRecord, ok := field.Type().(*avro.RecordSchema); ok {
-// 			return isAvroSelfReferencing(name, subRecord)
-// 		}
-// 	}
-//
-// 	return false
-// }

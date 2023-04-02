@@ -11,9 +11,15 @@ import (
 	"gorm.io/gorm"
 )
 
-func getSubjectByName(tx *gorm.DB, subjectName string) (*dbModels.Subject, error) {
+func getSubjectByName(tx *gorm.DB, subjectName string, includeDeleted bool) (*dbModels.Subject, error) {
 	subject := &dbModels.Subject{}
-	err := tx.Clauses(forceIndexHint("idx_subjects_name")).Where("name = ?", subjectName).First(subject).Error
+	tx = tx.Clauses(forceIndexHint("idx_subjects_name")).Where("name = ?", subjectName)
+
+	if includeDeleted {
+		tx = tx.Unscoped()
+	}
+
+	err := tx.First(subject).Error
 	if err != nil {
 		return nil, err
 	}

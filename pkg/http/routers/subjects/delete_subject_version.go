@@ -13,7 +13,7 @@ func deleteSubjectVersion(db *gorm.DB, subjectName string, version string, perma
 	var resp ResponseDeleteSubjectVersion
 
 	err := db.Transaction(func(tx *gorm.DB) error {
-		subject, err := getSubjectByName(tx, subjectName)
+		subject, err := getSubjectByName(tx, subjectName, false)
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return routers.NewAPIError(http.StatusNotFound, 40401, fmt.Errorf("subject not found"))

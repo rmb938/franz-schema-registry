@@ -114,7 +114,7 @@ func postSubjectVersion(db *gorm.DB, nextSequenceTx *gorm.DB, subjectName string
 		}
 
 		subjectVersionReferences := make(map[string]dbModels.SubjectVersion)
-		newRawReferences := make(map[string]string)
+		newRawReferences := make([]string, 0)
 		for _, reference := range data.References {
 			referencesSlice, referencesMap, err := getSubjectVersionsReferencedBySubjectNameAndVersion(tx, reference.Name, reference.Subject, reference.Version, dbSchemaType)
 			if err != nil {
@@ -122,8 +122,9 @@ func postSubjectVersion(db *gorm.DB, nextSequenceTx *gorm.DB, subjectName string
 			}
 
 			for _, name := range referencesSlice {
+				fmt.Printf("Schema Reference: %#v\n", referencesMap[name].Schema.Schema)
 				subjectVersionReferences[name] = referencesMap[name]
-				newRawReferences[name] = referencesMap[name].Schema.Schema
+				newRawReferences = append(newRawReferences, referencesMap[name].Schema.Schema)
 			}
 		}
 
@@ -132,7 +133,7 @@ func postSubjectVersion(db *gorm.DB, nextSequenceTx *gorm.DB, subjectName string
 			return routers.NewAPIError(http.StatusUnprocessableEntity, 42201, fmt.Errorf("error parsing schema: %w", err))
 		}
 
-		subject, err := getSubjectByName(tx, subjectName)
+		subject, err := getSubjectByName(tx, subjectName, true)
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) == false {
 				return fmt.Errorf("error finding subject: %s: %w", subjectName, err)
@@ -184,7 +185,7 @@ func postSubjectVersion(db *gorm.DB, nextSequenceTx *gorm.DB, subjectName string
 
 			var existingParsedSchemas []schemas.ParsedSchema
 			for _, existingSchemaVersion := range existingSchemaVersions {
-				references := make(map[string]string)
+				references := make([]string, 0)
 
 				// if it exists it means the original schema passed recursion validation
 				// so let's set it to -1 to offset any weirdness
@@ -194,7 +195,7 @@ func postSubjectVersion(db *gorm.DB, nextSequenceTx *gorm.DB, subjectName string
 				}
 
 				for _, schemaReference := range schemaReferences {
-					references[schemaReference.Name] = schemaReference.SubjectVersion.Schema.Schema
+					references = append(references, schemaReference.SubjectVersion.Schema.Schema)
 				}
 
 				existingParsedSchema, err := schemas.ParseSchema(existingSchemaVersion.Schema.Schema, schemaType, references)

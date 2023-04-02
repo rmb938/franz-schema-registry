@@ -32,7 +32,7 @@ func postSubject(db *gorm.DB, subjectName string, data *RequestPostSubject) (*Re
 	}
 
 	err := db.Transaction(func(tx *gorm.DB) error {
-		subject, err := getSubjectByName(tx, subjectName)
+		subject, err := getSubjectByName(tx, subjectName, false)
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return routers.NewAPIError(http.StatusNotFound, 40401, fmt.Errorf("subject not found"))
@@ -41,7 +41,7 @@ func postSubject(db *gorm.DB, subjectName string, data *RequestPostSubject) (*Re
 		}
 
 		subjectVersionReferences := make(map[string]dbModels.SubjectVersion)
-		newRawReferences := make(map[string]string)
+		newRawReferences := make([]string, 0)
 		for _, reference := range data.References {
 			referencesSlice, referencesMap, err := getSubjectVersionsReferencedBySubjectNameAndVersion(tx, reference.Name, reference.Subject, reference.Version, dbSchemaType)
 			if err != nil {
@@ -50,7 +50,7 @@ func postSubject(db *gorm.DB, subjectName string, data *RequestPostSubject) (*Re
 
 			for _, name := range referencesSlice {
 				subjectVersionReferences[name] = referencesMap[name]
-				newRawReferences[name] = referencesMap[name].Schema.Schema
+				newRawReferences = append(newRawReferences, referencesMap[name].Schema.Schema)
 			}
 		}
 
