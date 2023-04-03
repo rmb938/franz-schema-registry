@@ -64,6 +64,8 @@ func ParseSchema(rawSchema string, schemaType SchemaType, rawReferences []string
 		// second if there is a RCE bug then allowing loading from files or URLs is a very bad idea
 		// confluent sr currently allows loading from files or URLs but this seems like a security hole
 		// I'm purposefully breaking compatibility with confluent sr to not allow this and to fix the security hole
+		// If someone wants to allow loading from a known safe URL we probably could create a configuration
+		// that allows loading from refs that match a certain regex pattern
 		compiler.LoadURL = func(s string) (io.ReadCloser, error) {
 			return nil, fmt.Errorf("$ref %s not found", s)
 		}
