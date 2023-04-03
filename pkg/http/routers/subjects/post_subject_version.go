@@ -122,7 +122,6 @@ func postSubjectVersion(db *gorm.DB, nextSequenceTx *gorm.DB, subjectName string
 			}
 
 			for _, name := range referencesSlice {
-				fmt.Printf("Schema Reference: %#v\n", referencesMap[name].Schema.Schema)
 				subjectVersionReferences[name] = referencesMap[name]
 				newRawReferences = append(newRawReferences, referencesMap[name].Schema.Schema)
 			}

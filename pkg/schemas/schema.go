@@ -44,12 +44,9 @@ func ParseSchema(rawSchema string, schemaType SchemaType, rawReferences []string
 			return nil, fmt.Errorf("error parsing avro schema: %w", err)
 		}
 
-		// schema is a record
-		if recordSchema, ok := avroSchema.(*avro.RecordSchema); ok {
-			// so make sure it isn't overwriting any references
-			if name, ok := isAvroOverrideReferenceName(references, recordSchema, nil); ok {
-				return nil, fmt.Errorf("can't redefine: %s", name)
-			}
+		// so make sure it isn't overwriting any references
+		if name, ok := isAvroOverrideReferenceName(references, avroSchema, nil); ok {
+			return nil, fmt.Errorf("can't redefine: %s", name)
 		}
 
 		parsedSchema = &ParsedAvroSchema{
@@ -62,78 +59,61 @@ func ParseSchema(rawSchema string, schemaType SchemaType, rawReferences []string
 	return parsedSchema, nil
 }
 
-func isAvroOverrideReferenceName(references map[string]avro.Schema, recordSchema *avro.RecordSchema, seenRecords map[string]avro.Schema) (string, bool) {
+func isAvroOverrideReferenceName(references map[string]avro.Schema, schema avro.Schema, seenRecords map[string]avro.Schema) (string, bool) {
 	if seenRecords == nil {
 		seenRecords = make(map[string]avro.Schema)
-		seenRecords[recordSchema.FullName()] = recordSchema
 	}
 
-	// get all the record fields
-	for _, field := range recordSchema.Fields() {
-
-		// field is a reference
-		if refSchema, ok := field.Type().(*avro.RefSchema); ok {
-
-			// to a record
-			if subRecord, ok := refSchema.Schema().(*avro.RecordSchema); ok {
-				recordName := subRecord.FullName()
-
-				// record name is in the references
-				if ref, ok := references[recordName]; ok {
-					// record is not the reference so we are duplicated
-					if ref != subRecord {
-						// return normal name since it's overwriting in the same namespace
-						return subRecord.Name(), true
-					}
-
-					// record is the reference so continue to new field
-					continue
-				} else {
-					// record name is NOT in the references, and the name has been seen
-					if ref, ok := seenRecords[recordName]; ok {
-						// record is not the same so we are duplicated
-						if ref != subRecord {
-							// return normal name since it's overwriting in the same namespace
-							return subRecord.Name(), true
-						}
-					} else {
-						// record name is NOT in the references, and the name has not been seen
-						seenRecords[recordName] = subRecord
-						return isAvroOverrideReferenceName(references, subRecord, seenRecords)
-					}
-				}
+	switch v := schema.(type) {
+	// named schemas
+	case avro.NamedSchema:
+		schemaName := v.FullName()
+		// schema is in the references
+		if ref, ok := references[schemaName]; ok {
+			// but schema doesn't match reference so we've duplicated
+			if ref != v {
+				return schemaName, true
 			}
 		}
 
-		// field is record
-		if subRecord, ok := field.Type().(*avro.RecordSchema); ok {
-			recordName := subRecord.FullName()
-
-			// record name is in the references
-			if ref, ok := references[recordName]; ok {
-				// record is not the reference so we are duplicated
-				if ref != subRecord {
-					// return normal name since it's overwriting in the same namespace
-					return subRecord.Name(), true
-				}
-
-				// record is the reference so continue to new field
-				continue
-			} else {
-				// record name is NOT in the references, and the name has been seen
-				if ref, ok := seenRecords[recordName]; ok {
-					// record is not the same so we are duplicated
-					if ref != subRecord {
-						// return normal name since it's overwriting in the same namespace
-						return subRecord.Name(), true
-					}
-				} else {
-					// record name is NOT in the references, and the name has not been seen
-					seenRecords[recordName] = subRecord
-					return isAvroOverrideReferenceName(references, subRecord, seenRecords)
-				}
+		// schema was seen before
+		if ref, ok := seenRecords[schemaName]; ok {
+			// seen schema is not the same so we've duplicated
+			if ref != v {
+				return schemaName, true
 			}
+
+			// schema is the same, so we don't need to go down the chain again
+			return "", false
+		} else {
+			// schema was not seem before so add to map
+			seenRecords[schemaName] = v
 		}
+		switch namedSchema := v.(type) {
+		// record schema so recurse it's fields
+		case *avro.RecordSchema:
+			for _, field := range namedSchema.Fields() {
+				return isAvroOverrideReferenceName(references, field.Type(), seenRecords)
+			}
+
+		// named schemas that can't recurse
+		case *avro.EnumSchema:
+			return "", false
+		case *avro.FixedSchema:
+			return "", false
+		}
+		break
+	// collection schemas so recurse their items
+	case *avro.RefSchema:
+		return isAvroOverrideReferenceName(references, v.Schema(), seenRecords)
+	case *avro.ArraySchema:
+		return isAvroOverrideReferenceName(references, v.Items(), seenRecords)
+	case *avro.MapSchema:
+		return isAvroOverrideReferenceName(references, v.Values(), seenRecords)
+
+	// everything else
+	default:
+		return "", false
 	}
 
 	return "", false
