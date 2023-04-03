@@ -93,6 +93,7 @@ func isAvroOverrideReferenceName(references map[string]avro.Schema, recordSchema
 					if ref, ok := seenRecords[recordName]; ok {
 						// record is not the same so we are duplicated
 						if ref != subRecord {
+							// return normal name since it's overwriting in the same namespace
 							return subRecord.Name(), true
 						}
 					} else {
@@ -123,6 +124,7 @@ func isAvroOverrideReferenceName(references map[string]avro.Schema, recordSchema
 				if ref, ok := seenRecords[recordName]; ok {
 					// record is not the same so we are duplicated
 					if ref != subRecord {
+						// return normal name since it's overwriting in the same namespace
 						return subRecord.Name(), true
 					}
 				} else {
