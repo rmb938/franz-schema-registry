@@ -458,6 +458,29 @@ func TestPostSubjectVersionSelfReferences(t *testing.T) {
 	resp, err = postSubjectVersion(db, nil, "four", requestPostSubject)
 	assert.NoError(t, err)
 	assert.Equal(t, int32(2), resp.ID)
+
+	// create a new schema that references nested self and redefines
+	requestPostSubject = &RequestPostSubjectVersion{
+		Schema: `
+{
+  "type": "record",
+  "name": "schema_five",
+  "fields": [
+    {"name": "field1", "type": {"name":"schema_five", "type": "record", "fields": [{"name": "field1", "type": "schema_five"}]}}
+  ]
+}
+`,
+	}
+	assert.NoError(t, requestPostSubject.Bind(nil))
+	resp, err = postSubjectVersion(db, nil, "five", requestPostSubject)
+	apiError := &routers.APIError{}
+	assert.ErrorAs(t, err, &apiError)
+	assert.Nil(t, resp)
+	assert.Equal(t, 42201, apiError.ErrorCode)
+	req := httptest.NewRequest(http.MethodPost, "/", nil)
+	w := httptest.NewRecorder()
+	assert.NoError(t, render.Render(w, req, apiError))
+	assert.Equal(t, http.StatusUnprocessableEntity, w.Result().StatusCode)
 }
 
 func TestPostSubjectVersionOverwriteReferences(t *testing.T) {

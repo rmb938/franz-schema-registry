@@ -62,12 +62,11 @@ func ParseSchema(rawSchema string, schemaType SchemaType, rawReferences []string
 	return parsedSchema, nil
 }
 
-func isAvroOverrideReferenceName(references map[string]avro.Schema, recordSchema *avro.RecordSchema, seenRecords map[string]interface{}) (string, bool) {
+func isAvroOverrideReferenceName(references map[string]avro.Schema, recordSchema *avro.RecordSchema, seenRecords map[string]avro.Schema) (string, bool) {
 	if seenRecords == nil {
-		seenRecords = make(map[string]interface{})
+		seenRecords = make(map[string]avro.Schema)
+		seenRecords[recordSchema.FullName()] = recordSchema
 	}
-
-	seenRecords[recordSchema.FullName()] = nil
 
 	// get all the record fields
 	for _, field := range recordSchema.Fields() {
@@ -90,9 +89,15 @@ func isAvroOverrideReferenceName(references map[string]avro.Schema, recordSchema
 					// record is the reference so continue to new field
 					continue
 				} else {
-					// record name is NOT in the references, and the name has not been seen our name before
-					if _, ok := seenRecords[recordName]; !ok {
-						seenRecords[recordName] = nil
+					// record name is NOT in the references, and the name has been seen
+					if ref, ok := seenRecords[recordName]; ok {
+						// record is not the same so we are duplicated
+						if ref != subRecord {
+							return subRecord.Name(), true
+						}
+					} else {
+						// record name is NOT in the references, and the name has not been seen
+						seenRecords[recordName] = subRecord
 						return isAvroOverrideReferenceName(references, subRecord, seenRecords)
 					}
 				}
@@ -114,9 +119,15 @@ func isAvroOverrideReferenceName(references map[string]avro.Schema, recordSchema
 				// record is the reference so continue to new field
 				continue
 			} else {
-				// record name is NOT in the references, and the name has not been seen our name before
-				if _, ok := seenRecords[recordName]; !ok {
-					seenRecords[recordName] = nil
+				// record name is NOT in the references, and the name has been seen
+				if ref, ok := seenRecords[recordName]; ok {
+					// record is not the same so we are duplicated
+					if ref != subRecord {
+						return subRecord.Name(), true
+					}
+				} else {
+					// record name is NOT in the references, and the name has not been seen
+					seenRecords[recordName] = subRecord
 					return isAvroOverrideReferenceName(references, subRecord, seenRecords)
 				}
 			}
