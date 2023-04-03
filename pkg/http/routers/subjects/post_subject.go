@@ -22,8 +22,8 @@ func postSubject(db *gorm.DB, subjectName string, data *RequestPostSubject) (*Re
 		case schemas.SchemaTypeAvro:
 			dbSchemaType = dbModels.SchemaTypeAvro
 		// TODO: uncomment once these other types are supported
-		// case SchemaTypeJSON:
-		// 	dbSchemaType = dbModels.SchemaTypeJSON
+		case schemas.SchemaTypeJSON:
+			dbSchemaType = dbModels.SchemaTypeJSON
 		// case SchemaTypeProtobuf:
 		// 	dbSchemaType = dbModels.SchemaTypeProtobuf
 		default:
@@ -41,7 +41,8 @@ func postSubject(db *gorm.DB, subjectName string, data *RequestPostSubject) (*Re
 		}
 
 		subjectVersionReferences := make(map[string]dbModels.SubjectVersion)
-		newRawReferences := make([]string, 0)
+		rawReferences := make([]string, 0)
+		rawReferenceNames := make([]string, 0)
 		for _, reference := range data.References {
 			referencesSlice, referencesMap, err := getSubjectVersionsReferencedBySubjectNameAndVersion(tx, reference.Name, reference.Subject, reference.Version, dbSchemaType)
 			if err != nil {
@@ -50,11 +51,12 @@ func postSubject(db *gorm.DB, subjectName string, data *RequestPostSubject) (*Re
 
 			for _, name := range referencesSlice {
 				subjectVersionReferences[name] = referencesMap[name]
-				newRawReferences = append(newRawReferences, referencesMap[name].Schema.Schema)
+				rawReferences = append(rawReferences, referencesMap[name].Schema.Schema)
+				rawReferenceNames = append(rawReferenceNames, name)
 			}
 		}
 
-		_, err = schemas.ParseSchema(data.Schema, schemaType, newRawReferences)
+		_, err = schemas.ParseSchema(data.Schema, schemaType, rawReferences, rawReferenceNames)
 		if err != nil {
 			return routers.NewAPIError(http.StatusUnprocessableEntity, 42201, fmt.Errorf("error parsing schema: %w", err))
 		}

@@ -79,7 +79,7 @@ func TestPostSubjectVersionBadAndInvalid(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, w.Result().StatusCode)
 }
 
-func TestPostSubjectVersion(t *testing.T) {
+func TestPostSubjectVersionAvro(t *testing.T) {
 	db, dbFile := TempDatabase(t)
 	defer func() {
 		err := os.Remove(dbFile)
@@ -173,7 +173,7 @@ func TestPostSubjectVersion(t *testing.T) {
 	assert.Equal(t, int32(1), resp.ID)
 }
 
-func TestPostSubjectVersionReferences(t *testing.T) {
+func TestPostSubjectVersionAvroReferences(t *testing.T) {
 	db, dbFile := TempDatabase(t)
 	defer func() {
 		err := os.Remove(dbFile)
@@ -246,7 +246,7 @@ func TestPostSubjectVersionReferences(t *testing.T) {
 	assert.Equal(t, http.StatusConflict, w.Result().StatusCode)
 }
 
-func TestPostSubjectVersionReferencesLongChain(t *testing.T) {
+func TestPostSubjectVersionAvroReferencesLongChain(t *testing.T) {
 	db, dbFile := TempDatabase(t)
 	defer func() {
 		err := os.Remove(dbFile)
@@ -416,7 +416,7 @@ func TestPostSubjectVersionReferencesLongChain(t *testing.T) {
 	assert.Equal(t, http.StatusConflict, w.Result().StatusCode)
 }
 
-func TestPostSubjectVersionSelfReferences(t *testing.T) {
+func TestPostSubjectVersionAvroSelfReferences(t *testing.T) {
 	db, dbFile := TempDatabase(t)
 	defer func() {
 		err := os.Remove(dbFile)
@@ -483,7 +483,7 @@ func TestPostSubjectVersionSelfReferences(t *testing.T) {
 	assert.Equal(t, http.StatusUnprocessableEntity, w.Result().StatusCode)
 }
 
-func TestPostSubjectVersionOverwriteReferences(t *testing.T) {
+func TestPostSubjectVersionAvroOverwriteReferences(t *testing.T) {
 	db, dbFile := TempDatabase(t)
 	defer func() {
 		err := os.Remove(dbFile)
@@ -616,4 +616,12 @@ func TestPostSubjectVersionOverwriteReferences(t *testing.T) {
 	resp, err = postSubjectVersion(db, nil, "six", requestPostSubject)
 	assert.NoError(t, err)
 	assert.Equal(t, int32(3), resp.ID)
+}
+
+func TestPostSubjectVersionNewVersionDifferentSchemaTypes(t *testing.T) {
+	// TODO: create a avro subject then try and create a new version that is a json schema type
+}
+
+func TestPostSubjectVersionReferenceDifferentSchemaTypes(t *testing.T) {
+	// TODO: create a avro subject then try and create a new subject that is of a different type that references the first subject
 }

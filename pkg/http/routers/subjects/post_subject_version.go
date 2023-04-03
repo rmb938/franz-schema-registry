@@ -99,8 +99,8 @@ func postSubjectVersion(db *gorm.DB, nextSequenceTx *gorm.DB, subjectName string
 		case schemas.SchemaTypeAvro:
 			dbSchemaType = dbModels.SchemaTypeAvro
 		// TODO: uncomment once these other types are supported
-		// case SchemaTypeJSON:
-		// 	dbSchemaType = dbModels.SchemaTypeJSON
+		case schemas.SchemaTypeJSON:
+			dbSchemaType = dbModels.SchemaTypeJSON
 		// case SchemaTypeProtobuf:
 		// 	dbSchemaType = dbModels.SchemaTypeProtobuf
 		default:
@@ -115,6 +115,7 @@ func postSubjectVersion(db *gorm.DB, nextSequenceTx *gorm.DB, subjectName string
 
 		subjectVersionReferences := make(map[string]dbModels.SubjectVersion)
 		newRawReferences := make([]string, 0)
+		rawReferenceNames := make([]string, 0)
 		for _, reference := range data.References {
 			referencesSlice, referencesMap, err := getSubjectVersionsReferencedBySubjectNameAndVersion(tx, reference.Name, reference.Subject, reference.Version, dbSchemaType)
 			if err != nil {
@@ -124,10 +125,11 @@ func postSubjectVersion(db *gorm.DB, nextSequenceTx *gorm.DB, subjectName string
 			for _, name := range referencesSlice {
 				subjectVersionReferences[name] = referencesMap[name]
 				newRawReferences = append(newRawReferences, referencesMap[name].Schema.Schema)
+				rawReferenceNames = append(rawReferenceNames, name)
 			}
 		}
 
-		parsedSchema, err := schemas.ParseSchema(data.Schema, schemaType, newRawReferences)
+		parsedSchema, err := schemas.ParseSchema(data.Schema, schemaType, newRawReferences, rawReferenceNames)
 		if err != nil {
 			return routers.NewAPIError(http.StatusUnprocessableEntity, 42201, fmt.Errorf("error parsing schema: %w", err))
 		}
@@ -185,6 +187,7 @@ func postSubjectVersion(db *gorm.DB, nextSequenceTx *gorm.DB, subjectName string
 			var existingParsedSchemas []schemas.ParsedSchema
 			for _, existingSchemaVersion := range existingSchemaVersions {
 				references := make([]string, 0)
+				referenceNames := make([]string, 0)
 
 				// if it exists it means the original schema passed recursion validation
 				// so let's set it to -1 to offset any weirdness
@@ -195,9 +198,10 @@ func postSubjectVersion(db *gorm.DB, nextSequenceTx *gorm.DB, subjectName string
 
 				for _, schemaReference := range schemaReferences {
 					references = append(references, schemaReference.SubjectVersion.Schema.Schema)
+					referenceNames = append(referenceNames, schemaReference.Name)
 				}
 
-				existingParsedSchema, err := schemas.ParseSchema(existingSchemaVersion.Schema.Schema, schemaType, references)
+				existingParsedSchema, err := schemas.ParseSchema(existingSchemaVersion.Schema.Schema, schemaType, references, referenceNames)
 				if err != nil {
 					return routers.NewAPIError(http.StatusInternalServerError, 5001, fmt.Errorf("error parsing existing: %w", err))
 				}

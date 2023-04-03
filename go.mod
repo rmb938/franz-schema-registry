@@ -9,6 +9,7 @@ require (
 	github.com/go-logr/zapr v1.2.3
 	github.com/google/uuid v1.3.0
 	github.com/hamba/avro/v2 v2.7.0
+	github.com/santhosh-tekuri/jsonschema/v5 v5.2.0
 	github.com/stretchr/testify v1.8.1
 	go.uber.org/zap v1.24.0
 	gorm.io/driver/postgres v1.5.0

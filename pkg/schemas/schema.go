@@ -2,8 +2,11 @@ package schemas
 
 import (
 	"fmt"
+	"io"
+	"strings"
 
 	"github.com/hamba/avro/v2"
+	"github.com/santhosh-tekuri/jsonschema/v5"
 )
 
 type SchemaType string
@@ -18,7 +21,7 @@ type ParsedSchema interface {
 	IsBackwardsCompatible(previousSchema ParsedSchema) (bool, error)
 }
 
-func ParseSchema(rawSchema string, schemaType SchemaType, rawReferences []string) (ParsedSchema, error) {
+func ParseSchema(rawSchema string, schemaType SchemaType, rawReferences []string, rawReferenceNames []string) (ParsedSchema, error) {
 	var parsedSchema ParsedSchema
 
 	switch schemaType {
@@ -52,69 +55,52 @@ func ParseSchema(rawSchema string, schemaType SchemaType, rawReferences []string
 		parsedSchema = &ParsedAvroSchema{
 			avroSchema: avroSchema,
 		}
+		break
+	case SchemaTypeJSON:
+		compiler := jsonschema.NewCompiler()
+
+		// custom loader because we don't want to read from files or URLs
+		// first we don't want anyone reading from our filesystem, this is just not good
+		// second if there is a RCE bug then allowing loading from files or URLs is a very bad idea
+		// confluent sr currently allows loading from files or URLs but this seems like a security hole
+		// I'm purposefully breaking compatibility with confluent sr to not allow this and to fix the security hole
+		compiler.LoadURL = func(s string) (io.ReadCloser, error) {
+			return nil, fmt.Errorf("$ref %s not found", s)
+		}
+
+		for index, reference := range rawReferences {
+			err := compiler.AddResource(rawReferenceNames[index], strings.NewReader(reference))
+			if err != nil {
+				return nil, fmt.Errorf("error parsing json schema reference: %w", err)
+			}
+
+			_, err = compiler.Compile(rawReferenceNames[index])
+			if err != nil {
+				return nil, fmt.Errorf("error compiling json schema reference: %w", err)
+			}
+		}
+
+		err := compiler.AddResource("schema.json", strings.NewReader(rawSchema))
+		if err != nil {
+			return nil, fmt.Errorf("error parsing json schema: %w", err)
+		}
+
+		jsonSchema, err := compiler.Compile("schema.json")
+		if err != nil {
+			return nil, fmt.Errorf("error compiling json schema: %w", err)
+		}
+
+		// TODO: do we need to do the same overwriting references check as avro?
+		//  maybe unique $id's?
+
+		parsedSchema = &ParsedJSONSchema{
+			jsonSchema: jsonSchema,
+		}
+
+		break
 	default:
 		return nil, fmt.Errorf("unknown schema type: %s", schemaType)
 	}
 
 	return parsedSchema, nil
-}
-
-func isAvroOverrideReferenceName(references map[string]avro.Schema, schema avro.Schema, seenRecords map[string]avro.Schema) (string, bool) {
-	if seenRecords == nil {
-		seenRecords = make(map[string]avro.Schema)
-	}
-
-	switch v := schema.(type) {
-	// named schemas
-	case avro.NamedSchema:
-		schemaName := v.FullName()
-		// schema is in the references
-		if ref, ok := references[schemaName]; ok {
-			// but schema doesn't match reference so we've duplicated
-			if ref != v {
-				return schemaName, true
-			}
-		}
-
-		// schema was seen before
-		if ref, ok := seenRecords[schemaName]; ok {
-			// seen schema is not the same so we've duplicated
-			if ref != v {
-				return schemaName, true
-			}
-
-			// schema is the same, so we don't need to go down the chain again
-			return "", false
-		} else {
-			// schema was not seem before so add to map
-			seenRecords[schemaName] = v
-		}
-		switch namedSchema := v.(type) {
-		// record schema so recurse it's fields
-		case *avro.RecordSchema:
-			for _, field := range namedSchema.Fields() {
-				return isAvroOverrideReferenceName(references, field.Type(), seenRecords)
-			}
-
-		// named schemas that can't recurse
-		case *avro.EnumSchema:
-			return "", false
-		case *avro.FixedSchema:
-			return "", false
-		}
-		break
-	// collection schemas so recurse their items
-	case *avro.RefSchema:
-		return isAvroOverrideReferenceName(references, v.Schema(), seenRecords)
-	case *avro.ArraySchema:
-		return isAvroOverrideReferenceName(references, v.Items(), seenRecords)
-	case *avro.MapSchema:
-		return isAvroOverrideReferenceName(references, v.Values(), seenRecords)
-
-	// everything else
-	default:
-		return "", false
-	}
-
-	return "", false
 }
