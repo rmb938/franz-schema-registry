@@ -99,8 +99,8 @@ func postSubjectVersion(db *gorm.DB, nextSequenceTx *gorm.DB, subjectName string
 		case schemas.SchemaTypeAvro:
 			dbSchemaType = dbModels.SchemaTypeAvro
 		// TODO: uncomment once these other types are supported
-		case schemas.SchemaTypeJSON:
-			dbSchemaType = dbModels.SchemaTypeJSON
+		// case schemas.SchemaTypeJSON:
+		// 	dbSchemaType = dbModels.SchemaTypeJSON
 		// case SchemaTypeProtobuf:
 		// 	dbSchemaType = dbModels.SchemaTypeProtobuf
 		default:

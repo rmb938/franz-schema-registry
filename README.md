@@ -50,8 +50,17 @@ Franz Schema Registry is not production ready and is not recommended to be deplo
 ## Features Implemented
 
 - [X] Avro Schemas
+  - [X] Loading & Validating 
+  - [X] Backwards Compatibility
 - [ ] Protobuf Schemas
+  - [ ] Loading & Validating
+  - [ ] Backwards Compatibility
 - [ ] JSON Schemas
+  - Some code is written to load schemas & check backward compatibility, but it's complicated and there is a lot of nuance
+  - Until I find a library to do this or there is official guidance from JSON Schema Org this won't be supported for now
+  - If you are a JSON Schema expert feel free to contribute
+  - [ ] Loading & Validating
+  - [ ] Backwards Compatibility
 - [X] Schema References
 - [X] Schema Compatibility Checks
 - [ ] Schema Normalization - https://docs.confluent.io/platform/current/schema-registry/fundamentals/serdes-develop/index.html#schema-normalization

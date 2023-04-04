@@ -22,8 +22,8 @@ func postSubject(db *gorm.DB, subjectName string, data *RequestPostSubject) (*Re
 		case schemas.SchemaTypeAvro:
 			dbSchemaType = dbModels.SchemaTypeAvro
 		// TODO: uncomment once these other types are supported
-		case schemas.SchemaTypeJSON:
-			dbSchemaType = dbModels.SchemaTypeJSON
+		// case schemas.SchemaTypeJSON:
+		// 	dbSchemaType = dbModels.SchemaTypeJSON
 		// case SchemaTypeProtobuf:
 		// 	dbSchemaType = dbModels.SchemaTypeProtobuf
 		default:
