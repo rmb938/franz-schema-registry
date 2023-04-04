@@ -18,8 +18,9 @@ func (s *ParsedAvroSchema) IsBackwardsCompatible(previousSchema ParsedSchema) (b
 
 	schemaCompat := avro.NewSchemaCompatibility()
 
-	// TODO: this compatible check has a bug https://github.com/hamba/avro/issues/249
-	//  that doesn't take into account field/symbol/union order changes which would make the schema not compatible
+	// This compatible check checks compatibility of the schema itself but does not guarantee compatibility of the encoded data
+	// i.e. if record fields, enums, unions change order the encoded data is no longer compatible
+	// we need to replace this with that confluent SR does if it does something different
 	compatibilityErr := schemaCompat.Compatible(previousAvroSchema.avroSchema, s.avroSchema)
 	if compatibilityErr != nil {
 		return false, nil
