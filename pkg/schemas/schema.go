@@ -58,6 +58,7 @@ func ParseSchema(rawSchema string, schemaType SchemaType, rawReferences []string
 		break
 	case SchemaTypeJSON:
 		compiler := jsonschema.NewCompiler()
+		compiler.Draft = jsonschema.Draft7 // Default to draft 7, unsure what confluent sr defaults to
 
 		// custom loader because we don't want to read from files or URLs
 		// first we don't want anyone reading from our filesystem, this is just not good
@@ -82,6 +83,7 @@ func ParseSchema(rawSchema string, schemaType SchemaType, rawReferences []string
 			}
 		}
 
+		// TODO: is setting the URL to "schema.json" the correct thing to do?
 		err := compiler.AddResource("schema.json", strings.NewReader(rawSchema))
 		if err != nil {
 			return nil, fmt.Errorf("error parsing json schema: %w", err)
@@ -90,6 +92,11 @@ func ParseSchema(rawSchema string, schemaType SchemaType, rawReferences []string
 		jsonSchema, err := compiler.Compile("schema.json")
 		if err != nil {
 			return nil, fmt.Errorf("error compiling json schema: %w", err)
+		}
+
+		// confluent sr only supports draft 4, 6, 7
+		if jsonSchema.Draft != jsonschema.Draft4 && jsonSchema.Draft != jsonschema.Draft6 && jsonSchema.Draft != jsonschema.Draft7 {
+			return nil, fmt.Errorf("unsupported json schema draft: %s", jsonSchema.Draft.URL())
 		}
 
 		// TODO: do we need to do the same overwriting references check as avro?
