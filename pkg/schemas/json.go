@@ -30,21 +30,21 @@ func (s *ParsedJSONSchema) isBackwardsCompatible(reader, writer *jsonschema.Sche
 	if reader == nil && writer == nil {
 		return true, nil
 	} else if reader == nil {
-		// reader is nil so we are compatible
-		return true, nil
-	} else if writer == nil {
-		// writer is nil so we are not compatible
+		// reader is nil; schema added, not compatible
 		return false, nil
+	} else if writer == nil {
+		// writer is nil; schema removed, compatible
+		return true, nil
 	}
 
-	// enum array items added, compatible
+	// enum array extended, compatible
 
-	// enum array items removed, not compatible
+	// enum array narrowed, not compatible
 
-	// enum changed, not compatible; what does this mean?
+	// enum array changed, not compatible
 
-	// not type compatible, compatible
-	// not type not compatible, not compatible
+	// not type compatible; not type narrowed, compatible
+	// not type not compatible; not type extended, not compatible
 	notIsBackwardsCompatible, err := s.isBackwardsCompatible(reader.Not, reader.Not)
 	if err != nil {
 		return false, err
@@ -60,7 +60,7 @@ func (s *ParsedJSONSchema) isBackwardsCompatible(reader, writer *jsonschema.Sche
 
 	switch writerType {
 	case "string":
-		// types must match
+		// types must match; type changed, not compatible
 		if readerType != readerType {
 			return false, nil
 		}
@@ -89,12 +89,12 @@ func (s *ParsedJSONSchema) isBackwardsCompatible(reader, writer *jsonschema.Sche
 
 		break
 	case "integer", "number":
-		// if writer is a number and reader is not, not compatible
+		// if writer is a number and reader is not; type narrowed, not compatible
 		if writerType == "number" && readerType != "number" {
 			return false, nil
 		}
 
-		// if writer is an integer and reader is not an integer or a number, not compatible
+		// if writer is an integer and reader is not an integer or a number; type changed, not compatible
 		if writerType == "integer" && (readerType != "integer" && readerType != "number") {
 			return false, nil
 		}
@@ -139,16 +139,78 @@ func (s *ParsedJSONSchema) isBackwardsCompatible(reader, writer *jsonschema.Sche
 
 		// multiple reduced, compatible
 
-		// multiple changed, not compatible; what's this?
+		// multiple changed, not compatible
 	case "object":
-		// types must match
+		// types must match; type changed, not compatible
 		if writerType != readerType {
 			return false, nil
 		}
 
+		// max properties added, not compatible
+
+		// max properties removed, compatible
+
+		// max properties increased, compatible
+
+		// max properties decreased, not compatible
+
+		// min properties added, not compatible
+
+		// min properties removed, compatible
+
+		// min properties increased, not compatible
+
+		// min properties decreased, compatible
+
+		// additional properties is either nil, bool or *Schema
+		//  if reader is true
+		//      additional properties added, compatible
+		//  else
+		//      additional properties removed, not compatible
+		// else if additional properties either nil or schema
+		//  if reader == nil && writer != nil
+		//      additional properties narrowed, not compatible
+		//  else if reader != nil && writer == nil
+		//      additional properties extended, compatible
+		//  else
+		//      recurse & compare additional properties schema
+
+		// combine keys from reader.Dependencies & writer.Dependencies
+		// loop keys
+		//   readerDependencies := get reader.Dependencies[key]
+		//   writerDependencies := get writer.Dependencies[key]
+		//   if writerDependencies == nil
+		//      dependency removed, compatible
+		//   else if readerDependencies == nil
+		//      dependency added, not compatible
+		//   else
+		//      if both *Schema
+		//          recurse & compare schema
+		//      else if both []string
+		//          if writer contains all reader
+		//              dependency array extended, not compatible
+		//          else if reader contains all writer
+		//              dependency array narrowed, compatible
+		//          else
+		//              dependency array changed, not compatible
+
+		// TODO: compare properties https://github.com/confluentinc/schema-registry/blob/9ef76b4a1373f50a505162e72cffcbfd3dd2fee3/json-schema-provider/src/main/java/io/confluent/kafka/schemaregistry/json/diff/ObjectSchemaDiff.java#L174
+
+		// loop reader.Properties
+		//      if writer.Properties contains key
+		//          readerRequired := reader.Required contains key
+		//          writerRequired := writer.Required contains key
+		//          if readerRequired && not writerRequired
+		//              required attribute removed, compatible
+		//          else if not readerRequired && writerRequired
+		//              if writer.Properties[key].hasDefault
+		//                  required attribute with default added, compatible
+		//              else
+		//                  required attribute added, not compatible
+
 		break
 	case "array":
-		// types must match
+		// types must match; type changed, not compatible
 		if writerType != readerType {
 			return false, nil
 		}
@@ -188,19 +250,19 @@ func (s *ParsedJSONSchema) isBackwardsCompatible(reader, writer *jsonschema.Sche
 		//      recurse & compare additional items schema
 
 		// if items is array of schema
-		//  complicated things; see https://github.com/confluentinc/schema-registry/blob/9ef76b4a1373f50a505162e72cffcbfd3dd2fee3/json-schema-provider/src/main/java/io/confluent/kafka/schemaregistry/json/diff/ArraySchemaDiff.java#L121
+		//  TODO: complicated things; see https://github.com/confluentinc/schema-registry/blob/9ef76b4a1373f50a505162e72cffcbfd3dd2fee3/json-schema-provider/src/main/java/io/confluent/kafka/schemaregistry/json/diff/ArraySchemaDiff.java#L121
 		// else items is schema
 		//  recurse & compare schemas
 
 		break
 	case "boolean":
-		// types must match
+		// types must match; type changed, not compatible
 		if writerType != readerType {
 			return false, nil
 		}
 		break
 	case "null":
-		// types must match
+		// types must match; type changed, not compatible
 		if writerType != readerType {
 			return false, nil
 		}
