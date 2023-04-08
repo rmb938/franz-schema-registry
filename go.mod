@@ -12,6 +12,7 @@ require (
 	github.com/santhosh-tekuri/jsonschema/v5 v5.2.0
 	github.com/stretchr/testify v1.8.1
 	go.uber.org/zap v1.24.0
+	golang.org/x/exp v0.0.0-20230321023759-10a507213a29
 	gorm.io/driver/postgres v1.5.0
 	gorm.io/driver/sqlite v1.4.2
 	gorm.io/gorm v1.24.7-0.20230324020705-b444011d094d
