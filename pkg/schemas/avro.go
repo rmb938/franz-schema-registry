@@ -29,6 +29,8 @@ func (s *ParsedAvroSchema) IsBackwardsCompatible(previousSchema ParsedSchema) (b
 		return false, nil
 	}
 
+	// TODO: eventually like json return the reasoning why, not just true/false
+
 	return true, nil
 }
 

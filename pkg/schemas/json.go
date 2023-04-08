@@ -25,6 +25,7 @@ func (s *ParsedJSONSchema) IsBackwardsCompatible(previousSchema ParsedSchema) (b
 // Following rules here https://github.com/confluentinc/schema-registry/blob/9ef76b4a1373f50a505162e72cffcbfd3dd2fee3/json-schema-provider/src/main/java/io/confluent/kafka/schemaregistry/json/diff/SchemaDiff.java#L118
 func (s *ParsedJSONSchema) isBackwardsCompatible(reader, writer *jsonschema.Schema) (bool, error) {
 	// TODO: eventually we probably want to do something similar as confluent SR where it will return with the issues instead of just true/false
+	//  we don't want to return the recurse just keep adding to set of differences
 
 	// both schemas are nil so they are compatible
 	if reader == nil && writer == nil {
@@ -36,6 +37,10 @@ func (s *ParsedJSONSchema) isBackwardsCompatible(reader, writer *jsonschema.Sche
 		// writer is nil; schema removed, compatible
 		return true, nil
 	}
+
+	// TODO: normalize schemas, if schema is a reference, get the reference instead
+
+	// TODO: combined checking https://github.com/confluentinc/schema-registry/blob/9ef76b4a1373f50a505162e72cffcbfd3dd2fee3/json-schema-provider/src/main/java/io/confluent/kafka/schemaregistry/json/diff/SchemaDiff.java#L132-L165
 
 	// enum array extended, compatible
 
@@ -194,7 +199,50 @@ func (s *ParsedJSONSchema) isBackwardsCompatible(reader, writer *jsonschema.Sche
 		//          else
 		//              dependency array changed, not compatible
 
-		// TODO: compare properties https://github.com/confluentinc/schema-registry/blob/9ef76b4a1373f50a505162e72cffcbfd3dd2fee3/json-schema-provider/src/main/java/io/confluent/kafka/schemaregistry/json/diff/ObjectSchemaDiff.java#L174
+		// combine keys from reader.Properties & writer.Properties
+		// loop keys
+		//  readerSchema := reader.Properties[key]
+		//  writerSchema := writer.Properties[key]
+		//  if writerSchema == nil
+		//      if writer is open content model
+		//          property removed from open content model, compatible
+		//      else
+		//          writerPartialSchema := writer.PatternProps[key] <- need to loop and see if regex matches
+		//          if writerPartialSchema != nil
+		//              isCompatible, err := isBackwardsCompatible(readerSchema, writerPartialSchema)
+		//              if isCompatible
+		//                  property removed is covered by partially open content model, compatible
+		//              else
+		//                  property removed not covered by partially open content model, not compatible
+		//          else
+		//              if readerSchema is false schema TODO: how do we do this?
+		//                  property with false removed from closed content model, compatible
+		//              else
+		//                  property removed from closed content model, not compatible
+		//  else if readerSchema == nil
+		//      if reader is open content model
+		//          if writer is empty schema TODO: how do we do this? types len == 0?
+		//              property with empty schema added to open content model, compatible
+		//          else
+		//              property added to open content model, not compatible
+		//      else
+		//          readerPartialSchema := reader.PatternProps[key] <- need to loop and see if regex matches
+		//          if readerPartialSchema != nil
+		//              isCompatible, err := isBackwardsCompatible(readerPartialSchema, writerSchema)
+		//              if isCompatible
+		//                  property added is covered by partially open content model, compatible
+		//              else
+		//                  property added is not covered by partially open content model, not compatible
+		//          else
+		//      if writer.Required contains key
+		//          if writer.Property[key].hasDefault
+		//              required property with default added to unopen content model, compatible
+		//          else
+		//              required property added to unopen content model, not compatible
+		//      else
+		//          optional property added to unopen content model, compatible
+		//  else
+		//    recurse & compare schema
 
 		// loop reader.Properties
 		//      if writer.Properties contains key
@@ -249,10 +297,11 @@ func (s *ParsedJSONSchema) isBackwardsCompatible(reader, writer *jsonschema.Sche
 		//  else
 		//      recurse & compare additional items schema
 
+		// if items is schema
+		//  recurse & compare schemas
+
 		// if items is array of schema
 		//  TODO: complicated things; see https://github.com/confluentinc/schema-registry/blob/9ef76b4a1373f50a505162e72cffcbfd3dd2fee3/json-schema-provider/src/main/java/io/confluent/kafka/schemaregistry/json/diff/ArraySchemaDiff.java#L121
-		// else items is schema
-		//  recurse & compare schemas
 
 		break
 	case "boolean":
