@@ -261,26 +261,22 @@ func (s *ParsedJSONSchema) isBackwardsCompatible(reader, writer *jsonschema.Sche
 			// min properties decreased, compatible
 		}
 
-		readerHasAdditionalProps := false
-		writerHasAdditionalProps := false
+		readerPermitsAdditionalProps := false
+		writerPermitsAdditionalProps := false
 		if reader.AdditionalProperties != nil {
 			if b, ok := reader.AdditionalProperties.(bool); ok {
-				readerHasAdditionalProps = b
-			} else {
-				readerHasAdditionalProps = true
+				readerPermitsAdditionalProps = b
 			}
 		}
 		if writer.AdditionalProperties != nil {
 			if b, ok := writer.AdditionalProperties.(bool); ok {
-				writerHasAdditionalProps = b
-			} else {
-				writerHasAdditionalProps = true
+				writerPermitsAdditionalProps = b
 			}
 		}
 		readerAdditionalPropsSchema, _ := reader.AdditionalProperties.(*jsonschema.Schema)
 		writerAdditionalPropsSchema, _ := writer.AdditionalProperties.(*jsonschema.Schema)
-		if readerHasAdditionalProps != writerHasAdditionalProps {
-			if writerHasAdditionalProps {
+		if readerPermitsAdditionalProps != writerPermitsAdditionalProps {
+			if writerPermitsAdditionalProps {
 				// additional properties added, compatible
 			} else {
 				// additional properties removed, not compatible
