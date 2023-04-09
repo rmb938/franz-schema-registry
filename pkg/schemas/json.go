@@ -391,10 +391,10 @@ func (s *ParsedJSONSchema) isBackwardsCompatible(reader, writer *jsonschema.Sche
 			readerSchema := reader.Properties[propertyKey]
 			writerSchema := writer.Properties[propertyKey]
 			if writerSchema == nil {
-				if s.isOpenContentModel(writer) {
+				if s.isObjectOpenContentModel(writer) {
 					// property removed from open content model, compatible
 				} else {
-					writerPartialSchema := s.schemaFromPartiallyOpenContentModel(writer, propertyKey)
+					writerPartialSchema := s.schemaFromObjectPartiallyOpenContentModel(writer, propertyKey)
 					if writerPartialSchema != nil {
 						compatible, err := s.isBackwardsCompatible(readerSchema, writerPartialSchema)
 						if err != nil {
@@ -416,14 +416,14 @@ func (s *ParsedJSONSchema) isBackwardsCompatible(reader, writer *jsonschema.Sche
 					}
 				}
 			} else if readerSchema == nil {
-				if s.isOpenContentModel(reader) {
+				if s.isObjectOpenContentModel(reader) {
 					if len(writerSchema.Types) == 0 {
 						// property with empty schema added to open content model, compatible
 					} else {
 						// property added to open content model, not compatible
 					}
 				} else {
-					readerPartialSchema := s.schemaFromPartiallyOpenContentModel(reader, propertyKey)
+					readerPartialSchema := s.schemaFromObjectPartiallyOpenContentModel(reader, propertyKey)
 					if readerPartialSchema != nil {
 						compatible, err := s.isBackwardsCompatible(readerPartialSchema, writerSchema)
 						if err != nil {
@@ -476,43 +476,88 @@ func (s *ParsedJSONSchema) isBackwardsCompatible(reader, writer *jsonschema.Sche
 		}
 		break
 	case "array":
-		// max items added, not compatible
+		if reader.MaxItems == -1 && writer.MaxItems != -1 {
+			// max items added, not compatible
+			return false, nil
+		} else if reader.MaxItems != -1 && writer.MaxItems == -1 {
+			// max items removed, compatible
+		} else if reader.MaxItems < writer.MaxItems {
+			// max items increased, compatible
+		} else if reader.MaxItems > writer.MaxItems {
+			// max items decreased, not compatible
+			return false, nil
+		}
 
-		// max items removed, compatible
+		if reader.MinItems == -1 && writer.MinItems != -1 {
+			// min items added, not compatible
+			return false, nil
+		} else if reader.MinItems != -1 && writer.MinItems == -1 {
+			// min items removed, compatible
+		} else if reader.MinItems < writer.MinItems {
+			// min items increased, not compatible
+			return false, nil
+		} else if reader.MinItems > writer.MinItems {
+			// min items decreased, compatible
+		}
 
-		// max items increased, compatible
+		if reader.UniqueItems != writer.UniqueItems {
+			if reader.UniqueItems {
+				// unique items removed, compatible
+			} else {
+				// unique items added, not compatible
+				return false, nil
+			}
+		}
 
-		// max items decreased, not compatible
+		readerPermitsAdditionalItems := false
+		writerPermitsAdditionalItems := false
+		if reader.AdditionalItems != nil {
+			if b, ok := reader.AdditionalItems.(bool); ok {
+				readerPermitsAdditionalItems = b
+			}
+		}
+		if writer.AdditionalItems != nil {
+			if b, ok := writer.AdditionalItems.(bool); ok {
+				writerPermitsAdditionalItems = b
+			}
+		}
+		readerAdditionalItemsSchema, _ := reader.AdditionalItems.(*jsonschema.Schema)
+		writerAdditionalItemsSchema, _ := writer.AdditionalItems.(*jsonschema.Schema)
+		if readerPermitsAdditionalItems != writerPermitsAdditionalItems {
+			if readerPermitsAdditionalItems {
+				// additional items removed, not compatible
+				return false, nil
+			} else {
+				// additional items added, compatible
+			}
+		} else if readerAdditionalItemsSchema == nil && writerAdditionalItemsSchema != nil {
+			// additional items narrowed, not compatible
+			return false, nil
+		} else if readerAdditionalItemsSchema != nil && writerAdditionalItemsSchema == nil {
+			// additional items extended, compatible
+		} else {
+			additionalPropsBackwardCompatible, err := s.isBackwardsCompatible(readerAdditionalItemsSchema, writerAdditionalItemsSchema)
+			if err != nil {
+				return false, err
+			}
+			if !additionalPropsBackwardCompatible {
+				// additional items not compatible, not compatible
+				return false, nil
+			}
+		}
 
-		// min items added, not compatible
+		readerItemsSchema, _ := reader.Items.(*jsonschema.Schema)
+		writerItemsSchema, _ := writer.Items.(*jsonschema.Schema)
+		schemasCompatible, err := s.isBackwardsCompatible(readerItemsSchema, writerItemsSchema)
+		if err != nil {
+			return false, err
+		}
+		if !schemasCompatible {
+			return false, nil
+		}
 
-		// min items removed, compatible
-
-		// min items increased, not compatible
-
-		// min items decreased, compatible
-
-		// unique items removed, compatible
-
-		// unique items added, not compatible
-
-		// additional items is either nil, bool or *Schema
-		// if additional items is bool for both and not equal
-		//  if reader is true
-		//      additional items removed, not compatible
-		//  else
-		//      additional items added, compatible
-		// else if additional items either nil or schema
-		//  if reader == nil && writer != nil
-		//      additional items narrowed, not compatible
-		//  else if reader != nil && writer == nil
-		//      additional items extended, compatible
-		//  else
-		//      recurse & compare additional items schema
-
-		// if items is schema
-		//  recurse & compare schemas
-
+		// readerItemsSchemaSlice, _ := reader.Items.([]*jsonschema.Schema)
+		// writerItemsSchemaSlice, _ := writer.Items.([]*jsonschema.Schema)
 		// if items is array of schema
 		//  TODO: complicated things; see https://github.com/confluentinc/schema-registry/blob/9ef76b4a1373f50a505162e72cffcbfd3dd2fee3/json-schema-provider/src/main/java/io/confluent/kafka/schemaregistry/json/diff/ArraySchemaDiff.java#L121
 
@@ -532,7 +577,7 @@ func (s *ParsedJSONSchema) isBackwardsCompatible(reader, writer *jsonschema.Sche
 	return true, nil
 }
 
-func (s *ParsedJSONSchema) isOpenContentModel(schema *jsonschema.Schema) bool {
+func (s *ParsedJSONSchema) isObjectOpenContentModel(schema *jsonschema.Schema) bool {
 	permitsAdditionalProps := false
 	if schema.AdditionalProperties != nil {
 		if b, ok := schema.AdditionalProperties.(bool); ok {
@@ -546,7 +591,7 @@ func (s *ParsedJSONSchema) isOpenContentModel(schema *jsonschema.Schema) bool {
 		permitsAdditionalProps
 }
 
-func (s *ParsedJSONSchema) schemaFromPartiallyOpenContentModel(schema *jsonschema.Schema, propertyKey string) *jsonschema.Schema {
+func (s *ParsedJSONSchema) schemaFromObjectPartiallyOpenContentModel(schema *jsonschema.Schema, propertyKey string) *jsonschema.Schema {
 	for regex, schema := range schema.PatternProperties {
 		if regex.MatchString(propertyKey) {
 			return schema
