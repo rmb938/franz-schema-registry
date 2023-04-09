@@ -237,34 +237,70 @@ func (s *ParsedJSONSchema) isBackwardsCompatible(reader, writer *jsonschema.Sche
 		}
 		break
 	case "object":
-		// max properties added, not compatible
+		if reader.MaxProperties == -1 && writer.MaxProperties != -1 {
+			// max properties added, not compatible
+			return false, nil
+		} else if reader.MaxProperties != -1 && writer.MaxProperties == -1 {
+			// max properties removed, compatible
+		} else if reader.MaxProperties < writer.MaxProperties {
+			// max properties increased, compatible
+		} else if reader.MaxProperties > writer.MaxProperties {
+			// max properties decreased, not compatible
+			return false, nil
+		}
 
-		// max properties removed, compatible
+		if reader.MinProperties == -1 && writer.MinProperties != -1 {
+			// min properties added, not compatible
+			return false, nil
+		} else if reader.MinProperties != -1 && writer.MinProperties == -1 {
+			// min properties removed, compatible
+		} else if reader.MinProperties < writer.MinProperties {
+			// min properties increased, not compatible
+			return false, nil
+		} else if reader.MinProperties > writer.MinProperties {
+			// min properties decreased, compatible
+		}
 
-		// max properties increased, compatible
-
-		// max properties decreased, not compatible
-
-		// min properties added, not compatible
-
-		// min properties removed, compatible
-
-		// min properties increased, not compatible
-
-		// min properties decreased, compatible
-
-		// additional properties is either nil, bool or *Schema
-		//  if reader is true
-		//      additional properties added, compatible
-		//  else
-		//      additional properties removed, not compatible
-		// else if additional properties either nil or schema
-		//  if reader == nil && writer != nil
-		//      additional properties narrowed, not compatible
-		//  else if reader != nil && writer == nil
-		//      additional properties extended, compatible
-		//  else
-		//      recurse & compare additional properties schema
+		readerHasAdditionalProps := false
+		writerHasAdditionalProps := false
+		if reader.AdditionalProperties != nil {
+			if b, ok := reader.AdditionalProperties.(bool); ok {
+				readerHasAdditionalProps = b
+			} else {
+				readerHasAdditionalProps = true
+			}
+		}
+		if writer.AdditionalProperties != nil {
+			if b, ok := writer.AdditionalProperties.(bool); ok {
+				writerHasAdditionalProps = b
+			} else {
+				writerHasAdditionalProps = true
+			}
+		}
+		readerAdditionalPropsSchema, _ := reader.AdditionalProperties.(*jsonschema.Schema)
+		writerAdditionalPropsSchema, _ := writer.AdditionalProperties.(*jsonschema.Schema)
+		if readerHasAdditionalProps != writerHasAdditionalProps {
+			if writerHasAdditionalProps {
+				// additional properties added, compatible
+			} else {
+				// additional properties removed, not compatible
+				return false, nil
+			}
+		} else if readerAdditionalPropsSchema == nil && writerAdditionalPropsSchema != nil {
+			// additional properties narrowed, not compatible
+			return false, nil
+		} else if readerAdditionalPropsSchema != nil && writerAdditionalPropsSchema == nil {
+			// additional properties extended, compatible
+		} else {
+			additionalPropsBackwardCompatible, err := s.isBackwardsCompatible(readerAdditionalPropsSchema, writerAdditionalPropsSchema)
+			if err != nil {
+				return false, err
+			}
+			if !additionalPropsBackwardCompatible {
+				// additional props not compatible, not compatible
+				return false, nil
+			}
+		}
 
 		// combine keys from reader.Dependencies & writer.Dependencies
 		// loop keys
@@ -330,18 +366,22 @@ func (s *ParsedJSONSchema) isBackwardsCompatible(reader, writer *jsonschema.Sche
 		//  else
 		//    recurse & compare schema
 
-		// loop reader.Properties
-		//      if writer.Properties contains key
-		//          readerRequired := reader.Required contains key
-		//          writerRequired := writer.Required contains key
-		//          if readerRequired && not writerRequired
-		//              required attribute removed, compatible
-		//          else if not readerRequired && writerRequired
-		//              if writer.Properties[key].hasDefault
-		//                  required attribute with default added, compatible
-		//              else
-		//                  required attribute added, not compatible
-
+		for readerPropKey, _ := range reader.Properties {
+			if _, ok := writer.Properties[readerPropKey]; ok {
+				readerRequired := slices.Contains(reader.Required, readerPropKey)
+				writerRequired := slices.Contains(writer.Required, readerPropKey)
+				if readerRequired && !writerRequired {
+					// required attribute removed, compatible
+				} else if !readerRequired && writerRequired {
+					if writer.Properties[readerPropKey].Default != nil {
+						// required attribute with default added, compatible
+					} else {
+						// required attribute added, not compatible
+						return false, nil
+					}
+				}
+			}
+		}
 		break
 	case "array":
 		// max items added, not compatible

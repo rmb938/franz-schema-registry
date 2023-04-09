@@ -59,6 +59,7 @@ func ParseSchema(rawSchema string, schemaType SchemaType, rawReferences []string
 	case SchemaTypeJSON:
 		compiler := jsonschema.NewCompiler()
 		compiler.Draft = jsonschema.Draft7 // Default to draft 7, unsure what confluent sr defaults to
+		compiler.ExtractAnnotations = true
 
 		// custom loader because we don't want to read from files or URLs
 		// first we don't want anyone reading from our filesystem, this is just not good
