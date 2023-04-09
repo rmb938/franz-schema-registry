@@ -93,13 +93,15 @@ func (s *ParsedJSONSchema) isBackwardsCompatible(reader, writer *jsonschema.Sche
 	for _, item := range writer.Enum {
 		contains := slices.Contains(reader.Enum, item)
 		if !contains {
-			writerContainsAllReaderEnums = false
+			readerContainsAllWriterEnums = false
+			break
 		}
 	}
 	for _, item := range reader.Enum {
 		contains := slices.Contains(writer.Enum, item)
 		if !contains {
-			readerContainsAllWriterEnums = false
+			writerContainsAllReaderEnums = false
+			break
 		}
 	}
 	if writerContainsAllReaderEnums {
@@ -298,24 +300,90 @@ func (s *ParsedJSONSchema) isBackwardsCompatible(reader, writer *jsonschema.Sche
 			}
 		}
 
-		// combine keys from reader.Dependencies & writer.Dependencies
-		// loop keys
-		//   readerDependencies := get reader.Dependencies[key]
-		//   writerDependencies := get writer.Dependencies[key]
-		//   if writerDependencies == nil
-		//      dependency removed, compatible
-		//   else if readerDependencies == nil
-		//      dependency added, not compatible
-		//   else
-		//      if both *Schema
-		//          recurse & compare schema
-		//      else if both []string
-		//          if writer contains all reader
-		//              dependency array extended, not compatible
-		//          else if reader contains all writer
-		//              dependency array narrowed, compatible
-		//          else
-		//              dependency array changed, not compatible
+		propertyDependencyKeys := make(map[string]interface{})
+		schemaDependencyKeys := make(map[string]interface{})
+		readerPropertyDependencies := make(map[string][]string)
+		writerPropertyDependencies := make(map[string][]string)
+		readerSchemaDependencies := make(map[string]*jsonschema.Schema)
+		writerSchemaDependencies := make(map[string]*jsonschema.Schema)
+		for key, dependency := range reader.Dependencies {
+			if dependencySlice, ok := dependency.([]string); ok {
+				readerPropertyDependencies[key] = dependencySlice
+				propertyDependencyKeys[key] = nil
+			}
+
+			if dependencySchema, ok := dependency.(*jsonschema.Schema); ok {
+				readerSchemaDependencies[key] = dependencySchema
+				schemaDependencyKeys[key] = nil
+			}
+		}
+		for key, dependency := range writer.Dependencies {
+			if dependencySlice, ok := dependency.([]string); ok {
+				writerPropertyDependencies[key] = dependencySlice
+				propertyDependencyKeys[key] = nil
+			}
+
+			if dependencySchema, ok := dependency.(*jsonschema.Schema); ok {
+				writerSchemaDependencies[key] = dependencySchema
+				schemaDependencyKeys[key] = nil
+			}
+		}
+		for key, _ := range propertyDependencyKeys {
+			readerDependencies := readerPropertyDependencies[key]
+			writerDependencies := writerPropertyDependencies[key]
+			if writerDependencies == nil {
+				// dependency array removed, compatible
+			} else if readerDependencies == nil {
+				// dependency array added, not compatible
+			} else {
+				writerContainsAllReader := true
+				readerContainsAllWriter := true
+
+				for _, item := range writerDependencies {
+					contains := slices.Contains(readerDependencies, item)
+					if !contains {
+						readerContainsAllWriter = false
+						break
+					}
+				}
+				for _, item := range readerDependencies {
+					contains := slices.Contains(writerDependencies, item)
+					if !contains {
+						writerContainsAllReader = false
+						break
+					}
+				}
+
+				if writerContainsAllReader {
+					// dependency array extended, not compatible
+					return false, nil
+				} else if readerContainsAllWriter {
+					// dependency array narrowed, compatible
+				} else {
+					// dependency array changed, not compatible
+					return false, nil
+				}
+			}
+		}
+		for key, _ := range schemaDependencyKeys {
+			readerSchemaDependency := readerSchemaDependencies[key]
+			writerSchemaDependency := writerSchemaDependencies[key]
+			if writerSchemaDependency == nil {
+				// dependency schema removed, compatible
+			} else if readerSchemaDependency == nil {
+				// dependency schema added, not compatible
+				return false, nil
+			} else {
+				compatible, err := s.isBackwardsCompatible(readerSchemaDependency, writerSchemaDependency)
+				if err != nil {
+					return false, err
+				}
+				if !compatible {
+					// dependency schema not compatible, not compatible
+					return false, nil
+				}
+			}
+		}
 
 		// combine keys from reader.Properties & writer.Properties
 		// loop keys
