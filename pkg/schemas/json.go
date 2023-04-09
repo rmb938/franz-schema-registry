@@ -5,6 +5,7 @@ import (
 	"math/big"
 
 	"github.com/santhosh-tekuri/jsonschema/v5"
+	"golang.org/x/exp/maps"
 	"golang.org/x/exp/slices"
 )
 
@@ -385,50 +386,77 @@ func (s *ParsedJSONSchema) isBackwardsCompatible(reader, writer *jsonschema.Sche
 			}
 		}
 
-		// combine keys from reader.Properties & writer.Properties
-		// loop keys
-		//  readerSchema := reader.Properties[key]
-		//  writerSchema := writer.Properties[key]
-		//  if writerSchema == nil
-		//      if writer is open content model
-		//          property removed from open content model, compatible
-		//      else
-		//          writerPartialSchema := writer.PatternProps[key] <- need to loop and see if regex matches
-		//          if writerPartialSchema != nil
-		//              isCompatible, err := isBackwardsCompatible(readerSchema, writerPartialSchema)
-		//              if isCompatible
-		//                  property removed is covered by partially open content model, compatible
-		//              else
-		//                  property removed not covered by partially open content model, not compatible
-		//          else
-		//              if readerSchema is false schema TODO: how do we do this?
-		//                  property with false removed from closed content model, compatible
-		//              else
-		//                  property removed from closed content model, not compatible
-		//  else if readerSchema == nil
-		//      if reader is open content model
-		//          if writer is empty schema TODO: how do we do this? types len == 0?
-		//              property with empty schema added to open content model, compatible
-		//          else
-		//              property added to open content model, not compatible
-		//      else
-		//          readerPartialSchema := reader.PatternProps[key] <- need to loop and see if regex matches
-		//          if readerPartialSchema != nil
-		//              isCompatible, err := isBackwardsCompatible(readerPartialSchema, writerSchema)
-		//              if isCompatible
-		//                  property added is covered by partially open content model, compatible
-		//              else
-		//                  property added is not covered by partially open content model, not compatible
-		//          else
-		//      if writer.Required contains key
-		//          if writer.Property[key].hasDefault
-		//              required property with default added to unopen content model, compatible
-		//          else
-		//              required property added to unopen content model, not compatible
-		//      else
-		//          optional property added to unopen content model, compatible
-		//  else
-		//    recurse & compare schema
+		propertyKeys := append(maps.Keys(reader.Properties), maps.Keys(writer.Properties)...)
+		for _, propertyKey := range propertyKeys {
+			readerSchema := reader.Properties[propertyKey]
+			writerSchema := writer.Properties[propertyKey]
+			if writerSchema == nil {
+				if s.isOpenContentModel(writer) {
+					// property removed from open content model, compatible
+				} else {
+					writerPartialSchema := s.schemaFromPartiallyOpenContentModel(writer, propertyKey)
+					if writerPartialSchema != nil {
+						compatible, err := s.isBackwardsCompatible(readerSchema, writerPartialSchema)
+						if err != nil {
+							return false, err
+						}
+						if compatible {
+							// property removed is covered by partially open content model, compatible
+						} else {
+							// property removed is not covered by partially open content model, not compatible
+							return false, nil
+						}
+					} else {
+						if readerSchema.Always != nil && !*readerSchema.Always {
+							// property with false removed from closed content model, compatible
+						} else {
+							// property removed from closed content model, not compatible
+							return false, nil
+						}
+					}
+				}
+			} else if readerSchema == nil {
+				if s.isOpenContentModel(reader) {
+					if len(writerSchema.Types) == 0 {
+						// property with empty schema added to open content model, compatible
+					} else {
+						// property added to open content model, not compatible
+					}
+				} else {
+					readerPartialSchema := s.schemaFromPartiallyOpenContentModel(reader, propertyKey)
+					if readerPartialSchema != nil {
+						compatible, err := s.isBackwardsCompatible(readerPartialSchema, writerSchema)
+						if err != nil {
+							return false, err
+						}
+						if compatible {
+							// property added is covered by partially open content model, compatible
+						} else {
+							// property added not covered by partially open content model, not compatible
+							return false, nil
+						}
+					}
+					if slices.Contains(writer.Required, propertyKey) {
+						if writer.Properties[propertyKey].Default != nil {
+							// required property with default added to unopen content model, compatible
+						} else {
+							// required propetty added to unopen content model
+							return false, nil
+						}
+					} else {
+						// optional property added to unopen content model, compatible
+					}
+				}
+			} else {
+				compatible, err := s.isBackwardsCompatible(readerSchema, writerSchema)
+				if err != nil {
+					return false, err
+				}
+				if !compatible {
+					return false, nil
+				}
+			}
+		}
 
 		for readerPropKey := range reader.Properties {
 			if _, ok := writer.Properties[readerPropKey]; ok {
@@ -502,4 +530,29 @@ func (s *ParsedJSONSchema) isBackwardsCompatible(reader, writer *jsonschema.Sche
 	}
 
 	return true, nil
+}
+
+func (s *ParsedJSONSchema) isOpenContentModel(schema *jsonschema.Schema) bool {
+	permitsAdditionalProps := false
+	if schema.AdditionalProperties != nil {
+		if b, ok := schema.AdditionalProperties.(bool); ok {
+			permitsAdditionalProps = b
+		}
+	}
+	additionalPropsSchema, _ := schema.AdditionalProperties.(*jsonschema.Schema)
+
+	return len(schema.PatternProperties) == 0 &&
+		additionalPropsSchema == nil &&
+		permitsAdditionalProps
+}
+
+func (s *ParsedJSONSchema) schemaFromPartiallyOpenContentModel(schema *jsonschema.Schema, propertyKey string) *jsonschema.Schema {
+	for regex, schema := range schema.PatternProperties {
+		if regex.MatchString(propertyKey) {
+			return schema
+		}
+	}
+
+	additionalPropsSchema, _ := schema.AdditionalProperties.(*jsonschema.Schema)
+	return additionalPropsSchema
 }
