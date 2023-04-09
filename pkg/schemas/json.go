@@ -328,7 +328,7 @@ func (s *ParsedJSONSchema) isBackwardsCompatible(reader, writer *jsonschema.Sche
 				schemaDependencyKeys[key] = nil
 			}
 		}
-		for key, _ := range propertyDependencyKeys {
+		for key := range propertyDependencyKeys {
 			readerDependencies := readerPropertyDependencies[key]
 			writerDependencies := writerPropertyDependencies[key]
 			if writerDependencies == nil {
@@ -365,7 +365,7 @@ func (s *ParsedJSONSchema) isBackwardsCompatible(reader, writer *jsonschema.Sche
 				}
 			}
 		}
-		for key, _ := range schemaDependencyKeys {
+		for key := range schemaDependencyKeys {
 			readerSchemaDependency := readerSchemaDependencies[key]
 			writerSchemaDependency := writerSchemaDependencies[key]
 			if writerSchemaDependency == nil {
@@ -430,7 +430,7 @@ func (s *ParsedJSONSchema) isBackwardsCompatible(reader, writer *jsonschema.Sche
 		//  else
 		//    recurse & compare schema
 
-		for readerPropKey, _ := range reader.Properties {
+		for readerPropKey := range reader.Properties {
 			if _, ok := writer.Properties[readerPropKey]; ok {
 				readerRequired := slices.Contains(reader.Required, readerPropKey)
 				writerRequired := slices.Contains(writer.Required, readerPropKey)
